@@ -42,17 +42,3 @@ def apply_image(
     out.paste(scaled_decal, (box[0][0] + x_offset, box[0][1] + y_offset), scaled_decal)
 
     return out
-
-
-if __name__ == "__main__":
-    decal_file = "duckcustomizer/decal.png"
-    base_file = "duckcustomizer/duck_base.png"
-
-    base = Image.open(base_file).convert("RGBA")
-    decal = Image.open(decal_file).convert("RGBA")
-
-    position = (270, 320)
-    box = ((200, 200), (300, 400))
-    result = apply_image(base, decal, 45, box)
-
-    result.save("duckcustomizer/duck_result.png")

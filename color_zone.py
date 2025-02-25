@@ -1,10 +1,11 @@
-from PIL import Image 
+from PIL import Image
 
-type Color = tuple[int,int,int]
+type Color = tuple[int, int, int]
+
 
 def color_zones(base: Image, mask: Image, replacements: dict[Color, Color]) -> Image:
     """
-    Replaces colors in parts the base image according to 
+    Replaces colors in parts the base image according to
     zones in the mask image and colors in the replacements dictionary.
 
     Args:

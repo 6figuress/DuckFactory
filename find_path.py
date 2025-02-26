@@ -64,5 +64,55 @@ D = (4, 1)
 intersection = segment_intersection(A, B, C, D)
 print("Intersection:", intersection)
 
+# Get all the segments from points
+segs = []
+for i in range(len(processed_points)):
+    segs.append([tuple(processed_points[i-1]), tuple(processed_points[i])])
+
+print(segs)
 
 # idea: create a rectangle around the shape, scan across the rectangle at different intervals, profit???
+xmax = None
+ymax = None
+xmin = None
+ymin = None
+
+for i in processed_points:
+    if xmax == None:
+        xmax = i[0]
+        ymax = i[1]
+        xmin = i[0]
+        ymin = i[1]
+    
+    xmax = i[0] if i[0] > xmax else xmax
+    ymax = i[1] if i[1] > ymax else ymax
+    xmin = i[0] if i[0] < xmin else xmin
+    ymin = i[1] if i[1] < ymin else ymin
+
+
+print(xmax, ymax, xmin, ymin)
+
+#scan lines should not land on apexes!!!!
+SHIFT = 0.01 # added shift to not land on apexes
+INTERVAL = 0.2 # interval between scan lines
+
+posy = ymin + SHIFT
+paths = []
+
+while (posy < ymax):
+    scanA = (xmin - SHIFT, posy)
+    scanB = (xmax + SHIFT, posy)
+    x_inter = []
+
+    for i in segs:
+        inter = segment_intersection(scanA, scanB, i[0], i[1])
+        if inter is not None:
+            x_inter.append(inter[0])
+    
+    x_inter.sort()
+    for i in range(0, len(x_inter), 2):
+        paths.append([(x_inter[i],posy), (x_inter[i+1], posy)])
+    posy += INTERVAL
+    
+
+print(paths)

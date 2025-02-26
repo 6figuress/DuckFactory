@@ -8,6 +8,7 @@
 
 	"ruff.configuration": "pyproject.toml",
 	"ruff.organizeImports": true,
+	"ruff.lint.preview": true,
 	"ruff.fixAll": true,
 	"python.testing.pytestArgs": [
 		"tests"

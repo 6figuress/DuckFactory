@@ -5,15 +5,19 @@ type Color = tuple[int, int, int]
 
 def color_zones(base: Image, mask: Image, replacements: dict[Color, Color]) -> Image:
     """
-    Replaces colors in parts the base image according to
-    zones in the mask image and colors in the replacements dictionary.
+    Replaces colors in parts of an image defined by a mask.
 
     Args:
         base: The base image to colorize.
         mask: The mask image that defines the zones to colorize.
         replacements: A dictionary that maps mask colors to a replacement color.
-    """
 
+    Returns:
+        The new image with the colors replaced.
+
+    Raises:
+        ValueError: If the base and mask images have different sizes.
+    """
     if base.size != mask.size:
         raise ValueError("Base and mask images must have the same size")
 

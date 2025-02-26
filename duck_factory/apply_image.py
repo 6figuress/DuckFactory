@@ -15,6 +15,9 @@ def apply_image(
         decal: The decal image to apply.
         rotation: The rotation to apply the decal with.
         box: The box to apply the decal in.
+
+    Returns:
+        The new image with the decal applied.
     """
     out = base.copy()
     rotated_decal = decal.rotate(rotation, expand=True)

@@ -13,7 +13,7 @@ def images_are_identical(image1: Image, image2: Image) -> bool:
     return True
 
 
-def test_color_zones_raises_value_error_on_different_sizes():
+def test_color_zones_raises_value_error_on_different_sizes() -> None:
     base = Image.new("RGB", (10, 10))
     mask = Image.new("RGB", (5, 5))
     replacements = {}
@@ -22,7 +22,7 @@ def test_color_zones_raises_value_error_on_different_sizes():
         color_zones(base, mask, replacements)
 
 
-def test_color_zones_replaces_colors_correctly():
+def test_color_zones_replaces_colors_correctly() -> None:
     base = Image.new("RGB", (2, 2), color=(255, 255, 255))
     mask = Image.new("RGB", (2, 2), color=(0, 0, 0))
 
@@ -34,7 +34,7 @@ def test_color_zones_replaces_colors_correctly():
     assert images_are_identical(result, expected)
 
 
-def test_color_zones_replaces_multiple_colors_correctly():
+def test_color_zones_replaces_multiple_colors_correctly() -> None:
     base = Image.new("RGB", (2, 2), color=(255, 255, 255))
     mask = Image.fromarray(
         np.array(
@@ -67,7 +67,7 @@ def test_color_zones_replaces_multiple_colors_correctly():
     assert images_are_identical(result, expected)
 
 
-def test_color_zones_works_with_no_replacements():
+def test_color_zones_works_with_no_replacements() -> None:
     base = Image.new("RGB", (2, 2), color=(255, 255, 255))
     mask = Image.new("RGB", (2, 2), color=(0, 0, 0))
 

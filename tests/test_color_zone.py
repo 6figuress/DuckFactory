@@ -2,7 +2,7 @@ from PIL import Image
 import pytest
 import numpy as np
 
-from duckcustomizer.color_zone import color_zones
+from duck_factory.color_zone import color_zones
 
 
 def images_are_identical(image1: Image, image2: Image) -> bool:

@@ -29,7 +29,7 @@ class Dither():
         into nc values.
         """
         return np.round(value * (self.nc - 1)) / (self.nc - 1)
-    
+
     def floyd_steinberg_dither(self, img):
         """
         Floyd-Steinberg dither the image img into a palette with nc colours per channel.
@@ -95,6 +95,7 @@ def main():
     parser.add_argument("-o", help="output image location")
     args = parser.parse_args()
 
+    # dither = Dither(factor=0.5, algorithm="SimplePalette", nc=2)
     dither = Dither(factor=0.5, algorithm="fs", nc=2)
     img = Image.open(args.image_path)
     img = dither.apply_dithering(img)

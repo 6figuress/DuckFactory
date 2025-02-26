@@ -5,7 +5,8 @@ from PIL import Image
 
 from argparse import ArgumentParser
 
-class Dither():
+
+class Dither:
     def __init__(self, factor=1, algorithm="fs", nc=2):
         self.factor = factor
         self.algorithm = algorithm
@@ -22,7 +23,7 @@ class Dither():
             return self.simple_palette_reduce
         else:
             raise ValueError("Invalid algorithm")
-        
+
     def apply_threshold(self, value):
         """
         Get the "closest" colour to VALUE in the range [0,1] per channel divided
@@ -46,37 +47,39 @@ class Dither():
                 arr[ir, ic] = new_val
                 err = old_val - new_val
                 if ic < width - 1:
-                    arr[ir, ic+1] += err * 7/16
+                    arr[ir, ic + 1] += err * 7 / 16
                 if ir < height - 1:
                     if ic > 0:
-                        arr[ir+1, ic-1] += err * 3/16
+                        arr[ir + 1, ic - 1] += err * 3 / 16
 
-                    arr[ir+1, ic] += err * 5/16
-    
+                    arr[ir + 1, ic] += err * 5 / 16
+
                     if ic < width - 1:
-                        arr[ir+1, ic+1] += err / 16
+                        arr[ir + 1, ic + 1] += err / 16
 
-        max_val = np.max(arr, axis=(0,1))
+        max_val = np.max(arr, axis=(0, 1))
         if np.any(max_val > 0):
             arr /= max_val
         carr = np.array(arr * 255, dtype=np.uint8)
 
         return Image.fromarray(carr)
-    
+
     def simple_palette_reduce(self, img):
         """Simple palette reduction without dithering."""
         arr = np.array(img, dtype=float) / 255
         arr = self.apply_threshold(arr)
 
-        carr = np.array(arr/np.max(arr) * 255, dtype=np.uint8)
+        carr = np.array(arr / np.max(arr) * 255, dtype=np.uint8)
         return Image.fromarray(carr)
-    
+
     def rescale_image(self, img):
         """
         Rescale the image by the factor.
         """
-        return img.resize((int(img.size[0] * self.factor), int(img.size[1] * self.factor)))
-    
+        return img.resize(
+            (int(img.size[0] * self.factor), int(img.size[1] * self.factor))
+        )
+
     def apply_dithering(self, img):
         """
         Apply the dithering algorithm to the image.
@@ -88,6 +91,7 @@ class Dither():
         img = self.func(img)
         img = img.resize(original_size)
         return img
+
 
 def main():
     parser = ArgumentParser(description="Image dithering")
@@ -105,7 +109,7 @@ def main():
         img.show()
 
     print("Done.")
-    
+
 
 if __name__ == "__main__":
     main()
@@ -116,4 +120,3 @@ if __name__ == "__main__":
     # Example usage to dither an image and display it:
     # python dither_class.py input.png
     """
-        

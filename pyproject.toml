@@ -28,6 +28,9 @@ lint.ignore = [
     "D107",     # Missing docstring in __init__
     "ANN204",   # Missing return type annotation for __init__ 
 ]
+unfixable = [
+    "F401",     # Imported but unused
+]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google" 

@@ -4,52 +4,77 @@ import random
 import os
 
 class Vertex:
+    """
+    Represents a 3D vertex with x, y, and z coordinates.
+    """
     def __init__(self, x, y, z):
         self.x = x
         self.y = y
         self.z = z
 
 class Texture:
+    """
+    Represents a texture coordinate and extracts color from an image.
+    """
     def __init__(self, u, v, image=None):
         self.u = u
         self.v = v
-        self.color = (0, 0, 0)
         self.set_color(image)
-
-    def extract_pixel_color(self, image):
-        width, height = image.size
-        x_pixel = int(self.u * (width - 1))
-        y_pixel = int(self.v * (height - 1))
-
-        return image.getpixel((x_pixel, y_pixel))
     
     def set_color(self, image):
+        """
+        Sets the texture color by extracting it from the provided image.
+        """
         if image:
-            self.color = self.extract_pixel_color(image)
+            width, height = image.size
+            x_pixel = int(self.u * (width - 1))
+            y_pixel = int(self.v * (height - 1))
+
+            self.color = image.getpixel((x_pixel, y_pixel))
+        else:
+            self.color = (255, 255, 255)
 
 class Normal:
+    """
+    Represents a normal vector with x, y, and z components.
+    """
     def __init__(self, x, y, z):
         self.x = x
         self.y = y
         self.z = z
 
 class Point:
+    """
+    Represents a point in the 3D space, including vertex, normal, and texture data.
+    """
     def __init__(self, vertex, normal, texture):
         self.vertex = vertex
         self.normal = normal
         self.texture = texture
 
     def get_coordinates(self):
+        """
+        Returns the coordinates of the vertex.
+        """
         return (self.vertex.x, self.vertex.y, self.vertex.z)
     
     def get_color(self):
+        """
+        Returns the texture color of the point.
+        """
         return self.texture.color
     
     def get_texture_coordinates(self):
+        """
+        Returns the vertex coordinates and associated texture color.
+        """
         return (self.get_coordinates(), self.get_color())
 
 
 class Face:
+    """
+    Represents a triangular face consisting of three points.
+    """
     def __init__(self, *args):
         if len(args) == 1 and isinstance(args[0], (list, tuple)):
             points = args[0]
@@ -68,6 +93,9 @@ class Face:
 
     
 class Mesh:
+    """
+    Represents a 3D mesh loaded from an OBJ file with optional texture mapping.
+    """
     def __init__(self, file_path, texture_path=None):
         self.faces = []
         self.image = None
@@ -76,9 +104,12 @@ class Mesh:
         self.normals = []
         
         self.load_files(file_path, texture_path)
-        self.extract_faces()
+        self.parse_object()
 
     def load_texture(self, texture_path):
+        """
+        Loads the texture image from the specified path.
+        """
         valid_texture_extensions = [".png", ".jpg", ".jpeg"]
 
         if texture_path:
@@ -90,6 +121,9 @@ class Mesh:
 
 
     def load_files(self, file_path=None, texture_path=None):
+        """
+        Loads the OBJ file and associated texture file.
+        """
         if file_path and file_path.endswith(".obj"):
             if not os.path.exists(file_path):
                 raise FileNotFoundError(f"OBJ file not found: {file_path}")
@@ -100,7 +134,10 @@ class Mesh:
 
         self.load_texture(texture_path)
 
-    def extract_faces(self):
+    def parse_object(self):
+        """
+        Parses the OBJ file and extracts vertices, texture coordinates, normals, and faces.
+        """
         for line in self.file_lines:
             parts = line.strip().split()
 
@@ -116,21 +153,33 @@ class Mesh:
                 self.faces.append(self.extract_face(parts))
     
     def extract_vertex(self, parts):
+        """
+        Parses a vertex definition from the OBJ file.
+        """
         if len(parts) != 4:
             raise ValueError("Invalid vertex format in OBJ file")
         return Vertex(float(parts[1]), float(parts[2]), float(parts[3]))
     
     def extract_texture(self, parts):
+        """
+        Parses a texture coordinate definition from the OBJ file.
+        """
         if len(parts) < 3:
             raise ValueError("Invalid texture coordinate format in OBJ file")
         return Texture(float(parts[1]), float(parts[2]), self.image)
     
     def extract_normal(self, parts):
+        """
+        Parses a normal vector definition from the OBJ file.
+        """
         if len(parts) != 4:
             raise ValueError("Invalid normal format in OBJ file")
         return Normal(float(parts[1]), float(parts[2]), float(parts[3]))
     
     def extract_face(self, parts):
+        """
+        Parses a face definition and constructs a Face object.
+        """
         if len(parts) != 4:
             raise ValueError("Invalid face format in OBJ file, must have 3 vertices")
         points = []
@@ -147,14 +196,23 @@ class Mesh:
         return Face(points)
     
     def get_point_cloud(self):
+        """
+        Returns the point cloud of the mesh with vertex coordinates and texture colors.
+        """
         return [point.get_texture_coordinates() for face in self.faces for point in (face.p1, face.p2, face.p3)]
     
     def update_texture(self, texture_path):
+        """
+        Updates the texture of the mesh with a new image.
+        """
         self.load_texture(texture_path)
         for texture in self.textures:
             texture.set_color(self.image)
 
     def plot(self, n_points=1000):
+        """
+        Displays a subset of the mesh points in a 3D plot.
+        """
         points = self.get_point_cloud()
         random.shuffle(points)
 

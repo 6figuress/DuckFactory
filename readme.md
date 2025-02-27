@@ -11,6 +11,17 @@ _Scan-line polygon filling algorithm, https://www.tutorialspoint.com/computer_gr
 
 We know that after an odd number of intersections we are inside the polygon. We have to be careful about our scan lines. They must not land on an apex, or else the assumption about being inside the shape after an odd number of intersections isn't true anymore.
 
+To ensure that the line scanning part was working well, the result was visualised with pyplot:
+
+<img src="images/poly_gone.png" width="535">
+
+_The polygon we want to fill_
+
+
+<img src="images/poly_lines.png" width="535">
+
+_The result of the scan line filling_
+
 Some testing in real conditions will be necessary to determine what the optimal interval between scan lines is.
 
 When all the "inside segments" are found, we can write the output file. It looks like this:
@@ -28,6 +39,8 @@ When all the "inside segments" are found, we can write the output file. It looks
 0.0722;0.0161
 "release"
 ```
+
+Before this step, a simple unit conversion was done on the coordinates because I was working in centimeters and the robot uses meters
 
 For each of the segments we have to draw, we have it's start and stop points. The "release" is here to indicate that the pen must be lifted from the surface we're drawing on.
 

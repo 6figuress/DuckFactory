@@ -2,7 +2,7 @@ from PIL import Image
 
 import matplotlib.pyplot as plt
 
-def parse_obj(file_path):
+""" def parse_obj(file_path):
     vertices = {}  # Store vertices by index
     textures = {}  # Store texture coordinates by index
     normals = {}   # Store normals by index
@@ -45,7 +45,7 @@ def parse_obj(file_path):
                 faces.append(face_vertices)
 
     return vertices, textures, normals, faces
-
+"""
 """
 # Example Usage
 obj_file = "Dithering_test/Génère_moi_un_canar_0217112440_texture.obj"
@@ -130,6 +130,34 @@ def get_pixel_color(image_path, coords):
 
     return pixel_color  # Return as (R, G, B)
 
+def central_point(p1, p2, p3):
+    """
+    Computes the central point (barycenter) of three points in a 3D space.
+    
+    :param p1: Tuple (x, y, z) of the first point
+    :param p2: Tuple (x, y, z) of the second point
+    :param p3: Tuple (x, y, z) of the third point
+    :return: Tuple (x, y, z) representing the central point
+    """
+    x_central = (p1[0] + p2[0] + p3[0]) / 3
+    y_central = (p1[1] + p2[1] + p3[1]) / 3
+    z_central = (p1[2] + p2[2] + p3[2]) / 3
+    
+    return (x_central, y_central, z_central)
+
+def extract_face_data(face):
+    """
+    Extracts vertices, textures, and normals from a face.
+
+    :param face: List of (vertex, texture, normal) tuples.
+    :return: Tuple of three lists (vertices, textures, normals).
+    """
+    vertices = [v for v, _, _ in face]
+    textures = [t for _, t, _ in face]
+    normals = [n for _, _, n in face]
+
+    return vertices, textures, normals
+
 
 def plot_3d_points(points):
     """
@@ -166,11 +194,15 @@ def plot_faces_points(faces):
     face_points = []
 
     for face in faces:
-        if face:  # Ensure the face has at least one vertex
-            vertex = face[0][0]  # Extract the first vertex (x, y, z) from the face
-            if vertex:
+        if len(face) == 3:
+            vertices, textures, normals = extract_face_data(face)
+            for vertex in vertices:
                 face_points.append(vertex)
 
+    if not face_points:
+        print("No valid face points to plot.")
+        return
+    
     # Unpack x, y, and z coordinates
     x_vals, y_vals, z_vals = zip(*face_points)
 
@@ -202,17 +234,19 @@ def plot_faces_points_with_color(faces, image_path):
     colors = []
 
     for face in faces:
-        if face:  # Ensure the face has at least one vertex
-            vertex, texture, normal = face[0]  # Extract first vertex and its texture coordinates
-            if vertex and texture:
-                face_points.append(vertex)  # Store the vertex (x, y, z)
+        if len(face) == 3:
+            vertices, textures, normals = extract_face_data(face)
+            if vertices and textures:
+                # append to face_points each the three vertices of the face
+                for vertex in vertices:
+                    face_points.append(vertex)
 
-                # Normalize texture coordinates (u, v) for color retrieval
-                uv_coords = (texture[0], 1 - texture[1])  # Flip V coordinate for image mapping
-                color = get_pixel_color(image_path, uv_coords)
-                
-                # Normalize color to [0,1] for Matplotlib
-                colors.append([c / 255.0 for c in color])
+                for texture in textures:
+                    # Normalize texture coordinates (u, v) for color retrieval
+                    uv_coords = (texture[0], 1 - texture[1])  # Flip V coordinate for image mapping
+                    color = get_pixel_color(image_path, uv_coords)
+                    # Normalize color to [0,1] for Matplotlib
+                    colors.append([c / 255.0 for c in color])
 
     if not face_points:
         print("No valid face points to plot.")

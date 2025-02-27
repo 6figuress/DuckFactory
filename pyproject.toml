@@ -1,0 +1,39 @@
+[project]
+name = "duck_factory"
+version = "0.1.0"
+description = "Get factorized, ducks"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=2.2.3",
+    "pillow>=11.1.0",
+    "pytest>=8.3.4",
+    "ruff>=0.9.7",
+]
+
+[tool.ruff]
+lint.select = [
+    "D",        # Docstring style checks
+    "DOC",      # Docstring lint checks
+    "ANN",      # Type annotations checks
+    "N",        # Naming checks
+    "B",        # Commons bugs checks 
+    "F",        # Pyflakes checks - checks for common programming errors
+]
+lint.ignore = [
+    "D212",     # Multi-line docstring summary should start at the second line
+    "D100",     # Missing docstring in public module
+    "D105",     # Missing docstring in magic methods (e.g., __str__, __repr__)
+    "D106",     # Missing docstring in private methods (_private_method)
+    "D107",     # Missing docstring in __init__
+    "ANN204",   # Missing return type annotation for __init__ 
+]
+unfixable = [
+    "F401",     # Imported but unused
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google" 
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["D"]  # Disable all docstring checks in tests/

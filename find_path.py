@@ -1,8 +1,8 @@
 # ---------------------------find_path------------------------------------
-#
-#
-#
-#
+# This code is used to take a shape that has to be filled and create paths
+# for the pen to be able to draw the filled shape.
+# For this, we need the points describing the shape as an input and the
+# points describing each paths as an output.
 #
 #
 # AUTHOR: Guillaume Bessard
@@ -30,11 +30,8 @@ for point in points:
 print(processed_points)
 
 
+# Function to check intersections between segment AB and CD
 def segment_intersection(A, B, C, D):
-    """
-    Determines if two line segments AB and CD intersect.
-    Returns the intersection point (x, y) if they do, otherwise None.
-    """
     x1, y1 = A
     x2, y2 = B
     x3, y3 = C
@@ -43,7 +40,7 @@ def segment_intersection(A, B, C, D):
     # Compute determinants
     denominator = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
     if denominator == 0:
-        return None  # Parallel or coincident
+        return None  # Parallel
 
     t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denominator
     u = ((x1 - x3) * (y1 - y2) - (y1 - y3) * (x1 - x2)) / denominator
@@ -57,15 +54,6 @@ def segment_intersection(A, B, C, D):
     return None  # No intersection within the segment bounds
 
 
-# Example usage:
-A = (1, 1)
-B = (4, 4)
-C = (1, 4)
-D = (4, 1)
-
-intersection = segment_intersection(A, B, C, D)
-print("Intersection:", intersection)
-
 # Get all the segments from points
 segs = []
 for i in range(len(processed_points)):
@@ -73,7 +61,7 @@ for i in range(len(processed_points)):
 
 print(segs)
 
-# idea: create a rectangle around the shape, scan across the rectangle at different intervals, profit???
+# get the boundaries to know where to scan
 xmax = None
 ymax = None
 xmin = None
@@ -101,16 +89,22 @@ INTERVAL = 0.2  # interval between scan lines
 posy = ymin + SHIFT
 paths = []
 
+# Scanning every INTERVAL
 while posy < ymax:
+    # Creating the "scaning segment"
     scanA = (xmin - SHIFT, posy)
     scanB = (xmax + SHIFT, posy)
     x_inter = []
 
     for i in segs:
+        # Comparing "scanning segment" against every segment of the path, logging results
         inter = segment_intersection(scanA, scanB, i[0], i[1])
         if inter is not None:
             x_inter.append(inter[0])
 
+    # Here we sort the results. This way, all the intersection are arrenged "from left to right"
+    # We can then pop pairs of segment out of x_inter and they will represent segments that are
+    # inside the shape (true only if the is no point where we land on an apex)
     x_inter.sort()
     for i in range(0, len(x_inter), 2):
         paths.append([(x_inter[i], posy), (x_inter[i + 1], posy)])
@@ -118,9 +112,10 @@ while posy < ymax:
 
 out = ""
 
+# Preparing to write results in the file
 for path in paths:
     for points in path:
-        out += str(points[0]/100) + ";" + str(points[1]/100) + "\n"
+        out += str(points[0] / 100) + ";" + str(points[1] / 100) + "\n"
     out += "release\n"
 
 out = out[:-1]

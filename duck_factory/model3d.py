@@ -226,21 +226,23 @@ class Mesh:
         plt.show()
 
 # Usage
+def main():
+    # Creating a mesh object
+    mesh = Mesh("duck_factory/model.obj", "duck_factory/Génère_moi_un_canar_0219074804_texture.png")
 
-# Creating a mesh object
-mesh = Mesh("Dithering_test/Génère_moi_un_canar_0217112440_texture.obj", "Dithering_test/Génère_moi_un_canar_0217112440_texture.png")
+    # Displaying a subset of the mesh
+    mesh.plot(n_points=1000)
 
-# Displaying a subset of the mesh
-mesh.plot(n_points=1000)
+    # Updating the texture of the mesh
+    mesh.update_texture("duck_factory/Génère_moi_un_canar_0219074804_texture_fs.png")
 
-# Updating the texture of the mesh
-mesh.update_texture("Dithering_test/Génère_moi_un_canar_0219074804_texture_fs.png")
+    # Displaying the mesh with the updated texture
+    mesh.plot(n_points=1000)
 
-# Displaying the mesh with the updated texture
-mesh.plot(n_points=1000)
+    # Example of an usable output:
+    points = mesh.get_point_cloud()[:10]
+    for point in points:
+        print(f"Coordinates: {point[0]}, Color: {point[1]}")
 
-# Example of an usable output:
-points = mesh.get_point_cloud()[:10]
-for point in points:
-    print(f"Coordinates: {point[0]}, Color: {point[1]}")
-
+if __name__ == "__main__":
+    main()

@@ -1,28 +1,44 @@
-# ---------------------------find_path------------------------------------
-# This code is used to take a shape that has to be filled and create paths
-# for the pen to be able to draw the filled shape.
-# For this, we need the points describing the shape as an input and the
-# points describing each paths as an output.
-#
-#
-# AUTHOR: Guillaume Bessard
-# DATE: 24.02.2025
+"""
+Generate paths to fill a polygon.
+
+This code is used to take a shape that has to be filled and create paths
+for the pen to be able to draw the filled shape.
+For this, we need the points describing the shape as an input and the
+points describing each paths as an output.
+
+AUTHOR: Guillaume Bessard
+DATE: 24.02.2025
+"""
 
 import sys
 
 
-def segment_intersection(A, B, C, D):
-    """Check intersection between segments AB and CD."""
-    x1, y1 = A
-    x2, y2 = B
-    x3, y3 = C
-    x4, y4 = D
+def segment_intersection(a: float, b: float, c: float, d: float) -> tuple[float, float]:
+    """
+    Check intersection between segments AB and CD.
+
+    Args:
+        a: First point of segment AB.
+        b: Second point of segment AB.
+        c: First point of segment CD.
+        d: Second point of segment CD.
+
+    Returns:
+        The intersection point if it exists, None otherwise
+    """
+    x1, y1 = a
+    x2, y2 = b
+    x3, y3 = c
+    x4, y4 = d
+
     # Compute determinants
     denominator = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
     if denominator == 0:
         return None  # Parallel
+
     t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denominator
     u = ((x1 - x3) * (y1 - y2) - (y1 - y3) * (x1 - x2)) / denominator
+
     # Check if intersection is within both segments
     if 0 <= t <= 1 and 0 <= u <= 1:
         intersection_x = x1 + t * (x2 - x1)
@@ -31,8 +47,24 @@ def segment_intersection(A, B, C, D):
     return None  # No intersection within the segment bounds
 
 
-def find_path(points, shift=0.01, interval=0.2):
-    """Find paths to fill a polygon."""
+def find_path(
+    points: list[tuple[float, float]], shift: float = 0.01, interval: float = 0.2
+) -> list[list[tuple[float, float]]]:
+    """
+    Find paths to fill a polygon.
+
+    The function takes a list of points describing a polygon and returns the paths
+    to fill the polygon. Each path represents a line the pen should follow to fill the polygon.
+
+    Args:
+        points: The points describing the polygon, as a list of tuples (x, y).
+        shift: The shift to avoid apexes.
+        interval: The interval between scan lines.
+
+    Returns:
+        The paths to fill the polygon, as a list of lists of tuples (x, y),
+        where each inner list represents a path
+    """
     # Get all the segments from points
     segs = []
     for i in range(len(points)):
@@ -55,20 +87,18 @@ def find_path(points, shift=0.01, interval=0.2):
         ymin = i[1] if i[1] < ymin else ymin
 
     # scan lines should not land on apexes!!!!
-    SHIFT = shift  # added shift to not land on apexes
-    INTERVAL = interval  # interval between scan lines
-    posy = ymin + SHIFT
+    posy = ymin + shift
     paths = []
 
     # Scanning every INTERVAL
     while posy < ymax:
         # Creating the "scaning segment"
-        scanA = (xmin - SHIFT, posy)
-        scanB = (xmax + SHIFT, posy)
+        scan_a = (xmin - shift, posy)
+        scan_b = (xmax + shift, posy)
         x_inter = []
         for i in segs:
             # Comparing "scanning segment" against every segment of the path, logging results
-            inter = segment_intersection(scanA, scanB, i[0], i[1])
+            inter = segment_intersection(scan_a, scan_b, i[0], i[1])
             if inter is not None:
                 x_inter.append(inter[0])
         # Here we sort the results. This way, all the intersection are arrenged "from left to right"
@@ -78,7 +108,7 @@ def find_path(points, shift=0.01, interval=0.2):
         for i in range(0, len(x_inter), 2):
             if i + 1 < len(x_inter):  # Ensure we have a pair
                 paths.append([(x_inter[i], posy), (x_inter[i + 1], posy)])
-        posy += INTERVAL
+        posy += interval
 
     return paths
 

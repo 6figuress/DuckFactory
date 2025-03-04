@@ -129,10 +129,8 @@ class Dither:
         Returns:
             the dithered image
         """
-        original_size = img.size
         img = self.rescale_image(img)
         img = self.func(img)
-        img = img.resize(original_size)
         return img
 
 
@@ -150,12 +148,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # dither = Dither(factor=0.5, algorithm="SimplePalette", nc=2)
-    dither = Dither(factor=0.5, algorithm="fs", nc=2)
+    dither = Dither(factor=0.1, algorithm="fs", nc=2)
     img = Image.open(args.image_path)
     img = dither.apply_dithering(img)
     if args.o:
         img.save(args.o)
     else:
         img.show()
-
-    print("Done.")

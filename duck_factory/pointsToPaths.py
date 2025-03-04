@@ -4,8 +4,7 @@ from scipy.spatial import distance_matrix
 
 import matplotlib.pyplot as plt
 
-from model3d import Mesh
-# from duck_factory.model3d import Mesh  # For testing purposes
+from duck_factory.model3d import Mesh
 
 import random
 

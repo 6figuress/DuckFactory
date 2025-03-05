@@ -4,96 +4,129 @@ import numpy as np
 import trimesh
 from trimesh.sample import sample_surface
 from sklearn.cluster import DBSCAN
+from dataclasses import dataclass
+from typing import List, Tuple
 import pyray as ray
 
-type Color = tuple[int, int, int]
-type Point = tuple[float, float, float]
+type Color = Tuple[int, int, int]
+type Point = Tuple[float, float, float]
+type Normal = Tuple[float, float, float]
+
+
+@dataclass
+class SampledPoint:
+    """
+    Represents a point sampled from a mesh surface with additional metadata.
+
+    Attributes:
+        coordinates: 3D coordinates of the point
+        color: RGB color of the point
+        normal: Surface normal at the point
+    """
+
+    coordinates: Point
+    color: Color
+    normal: Normal
 
 
 def sample_mesh_points(
     mesh: trimesh.Trimesh,
     base_color: Color,
-    colors: list[Color],
+    colors: List[Color],
     n_samples: int = 500_000,
-) -> dict[Color, list[Point]]:
+) -> List[SampledPoint]:
     """
     Samples points from the surface of a mesh and assigns them to the closest color in the palette.
+
+    Notes:  Points with the base color are ignored.
+            As some points may be discarded after sampling, the number of sampled points may be less than n_samples.
 
     Args:
         mesh: The mesh to sample points from.
         base_color: The base color of the mesh. Points with this color will be ignored.
         colors: A list of colors in the palette.
-        n_samples: The number of points to sample. The function will return fewer points if the projected points don't cover the whole mesh.
+        n_samples: The number of points to sample.
 
     Returns:
-        A dictionary mapping colors to lists of points.
+        A list of SampledPoint objects, excluding points with the base color.
     """
+    # Sample surface points
     sampled_surface_points = sample_surface(mesh, n_samples, sample_color=True)
 
-    points_count = len(sampled_surface_points[0])
     all_points = sampled_surface_points[0]
+    all_faces = sampled_surface_points[1]
     all_colors = sampled_surface_points[2]
 
-    # Remap colors to palette colors
-    for i in range(points_count):
+    processed_points = []
+    for i in range(len(all_points)):
+        # Find closest color in palette
         color = all_colors[i]
         distances = np.linalg.norm(np.array(colors) - color, axis=1)
         closest_color = colors[np.argmin(distances)]
-        all_colors[i] = closest_color
 
-    # Convert to tuples
-    all_points = [tuple(point) for point in all_points]
-    all_colors = [tuple(int(c) for c in color) for color in all_colors]
+        # Skip base color points
+        if closest_color == base_color:
+            continue
 
-    colors_unique = list(set(all_colors))
+        # Create SampledPoint
+        point_coords = tuple(all_points[i])
+        point_normal = tuple(mesh.face_normals[all_faces[i]])
+        processed_points.append(
+            SampledPoint(
+                coordinates=point_coords,
+                color=closest_color,
+                normal=point_normal,
+            )
+        )
 
-    # Group points by color
-    points_by_color = {color: [] for color in colors_unique}
-    for i in range(points_count):
-        color = all_colors[i]
-        point = all_points[i]
-        points_by_color[color].append(point)
-
-    # Drop the base color
-    points_by_color.pop(base_color, None)
-
-    return points_by_color
+    return processed_points
 
 
 def cluster_points(
-    points_by_color: dict[Color, list[Point]],
+    points: List[SampledPoint],
     eps: float = 0.0025 / 2,
     min_samples: int = 10,
-) -> list[tuple[list[Point], Color]]:
+) -> List[Tuple[List[SampledPoint], Color, bool]]:
     """
-    Clusters points that are close to each other and have the same color.
+    Clusters points that are close to each other.
 
     Args:
-        points_by_color: A dictionary mapping colors to points.
-        eps: The maximum distance between two samples for one to be considered as in the neighborhood of the other. See DBSCAN documentation for more details.
-        min_samples: The number of samples in a neighborhood for a point to be considered as a core point. See DBSCAN documentation for more details.
+        points: List of points to cluster
+        eps: Maximum distance between two samples for neighborhood
+        min_samples: Minimum number of samples in a neighborhood
 
     Returns:
-        A list of clusters, each containing a list of points and a color.
+        List of clusters, each containing a list of points, their color, and a flag indicating if the cluster is noise (i.e. points not in any cluster)
     """
+    # Group points by color
+    color_groups = {}
+    for point in points:
+        if point.color not in color_groups:
+            color_groups[point.color] = []
+        color_groups[point.color].append(point)
+
     clusters_flat = []
+    for color, color_points in color_groups.items():
+        # Extract point coordinates
+        point_coords = np.array([p.coordinates for p in color_points])
 
-    for color, points in points_by_color.items():
-        if not points:
-            continue
-
-        points = np.array(points)
-        clustering = DBSCAN(eps=eps, min_samples=min_samples, n_jobs=-1).fit(points)
+        # Perform DBSCAN clustering
+        clustering = DBSCAN(eps=eps, min_samples=min_samples, n_jobs=-1).fit(
+            point_coords
+        )
         labels = clustering.labels_
 
+        # Group points by cluster label
         color_clusters = {}
         for i, label in enumerate(labels):
             if label not in color_clusters:
                 color_clusters[label] = []
-            color_clusters[label].append(points[i].tolist())
+            color_clusters[label].append(color_points[i])
 
-        for cluster_points in color_clusters.values():
-            clusters_flat.append((cluster_points, color))
+        # Flatten clusters
+        for label, cluster_points in color_clusters.items():
+            if cluster_points:
+                clusters_flat.append((cluster_points, color, label == -1))
 
     return clusters_flat
 
@@ -117,7 +150,7 @@ if __name__ == "__main__":
 
     all_points = []
     all_colors = []
-    for points, color in clusters_flat:
+    for points, color, _ in clusters_flat:
         all_points.extend(points)
         all_colors.extend([color] * len(points))
 
@@ -133,15 +166,7 @@ if __name__ == "__main__":
 
     model = ray.load_model("DuckAllYellow.obj")
 
-    selected_cluster = -1
     while not ray.window_should_close():
-        if ray.is_key_released(ray.KeyboardKey.KEY_SPACE):
-            selected_cluster += 1
-            selected_cluster %= len(clusters_flat) - 1
-
-        if ray.is_key_released(ray.KeyboardKey.KEY_BACKSPACE):
-            selected_cluster = -1
-
         ray.begin_drawing()
         ray.clear_background(ray.DARKBLUE)
 
@@ -155,15 +180,10 @@ if __name__ == "__main__":
 
         pen_width = 0.0018 / 2
 
-        if selected_cluster == -1:
-            for i in range(len(all_points)):
-                point = all_points[i]
-                color = all_colors[i]
-                ray.draw_sphere(point, pen_width, color)
-        else:
-            cpoints, color = clusters_flat[selected_cluster]
-            for point in cpoints:
-                ray.draw_sphere(tuple(point), 0.00075, color)
+        for i in range(len(all_points)):
+            point = all_points[i]
+            color = all_colors[i]
+            ray.draw_sphere(point.coordinates, pen_width, color)
 
         ray.end_mode_3d()
         ray.end_drawing()

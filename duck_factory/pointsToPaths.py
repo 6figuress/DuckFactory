@@ -3,23 +3,23 @@ import networkx as nx
 from scipy.spatial import distance_matrix
 
 import matplotlib.pyplot as plt
+import trimesh
 
-from duck_factory.model3d import Mesh
-
-import random
+from duck_factory.point_sampling import SampledPoint, sample_mesh_points, cluster_points
 
 
 class PathFinder:
     """Class for generating a graph from a point cloud. Finding connected components, and computing paths that ensure consecutive points are within a maximum distance."""
 
-    def __init__(self, points: list[tuple[float, float, float]], max_distance: float):
+    def __init__(self, points: list[SampledPoint], max_distance: float):
         """
         Initializes the PathFinder with a point cloud and a maximum distance.
 
-        :param points: List of tuples representing (x, y, z) coordinates
-        :param max_distance: Maximum allowed distance between connected points
+        Args:
+            points: List of SampledPoint representing sampled points
+            max_distance: Maximum allowed distance between connected points
         """
-        self.points = np.array(points)
+        self.points = points
         self.max_distance = max_distance
         self.graph = self._create_graph()
 
@@ -35,10 +35,12 @@ class PathFinder:
             :rtype: nx.Graph
         """
         G = nx.Graph()
-        for i, (x, y, z) in enumerate(self.points):
-            G.add_node(i, pos=(x, y, z))
+        for i, point in enumerate(self.points):
+            G.add_node(i, pos=point.coordinates)
 
-        dist_matrix = distance_matrix(self.points, self.points)
+        # Extract coordinates for distance matrix
+        coords = np.array([point.coordinates for point in self.points])
+        dist_matrix = distance_matrix(coords, coords)
         num_points = len(self.points)
 
         for i in range(num_points):
@@ -57,16 +59,15 @@ class PathFinder:
         """
         return [list(component) for component in nx.connected_components(self.graph)]
 
-    def _solve_path(
-        self, points: list[tuple[float, float, float]]
-    ) -> list[list[tuple[float, float, float]]]:
+    def _solve_path(self, points: list[SampledPoint]) -> list[list[SampledPoint]]:
         """
         Finds paths within a connected component, ensuring that consecutive points respect the distance constraint.
 
-        :param points: List of tuples representing (x, y, z) coordinates
+        Args:
+            points: List of SampledPoint representing coordinates
 
         Returns:
-            List of paths, each path being a list of (x, y, z) tuples
+            List of paths, each path being a list of SampledPoint
         """
         num_points = len(points)
         if num_points <= 1:
@@ -78,29 +79,40 @@ class PathFinder:
         while unvisited:
             path = []
             start = unvisited.pop()
-            path.append(tuple(points[start]))
+            path.append(points[start])
 
             while unvisited:
                 last = path[-1]
-                nearest = min(unvisited, key=lambda i: np.linalg.norm(points[i] - last))
+                nearest = min(
+                    unvisited,
+                    key=lambda i: np.linalg.norm(
+                        np.array(points[i].coordinates) - np.array(last.coordinates)
+                    ),
+                )
 
                 # Check distance constraint
-                if np.linalg.norm(points[nearest] - last) > self.max_distance:
+                if (
+                    np.linalg.norm(
+                        np.array(points[nearest].coordinates)
+                        - np.array(last.coordinates)
+                    )
+                    > self.max_distance
+                ):
                     break
 
                 unvisited.remove(nearest)
-                path.append(tuple(points[nearest]))
+                path.append(points[nearest])
 
             paths.append(path)
 
         return paths
 
-    def find_paths(self) -> list[list[tuple[float, float, float]]]:
+    def find_paths(self) -> list[list[SampledPoint]]:
         """
         Finds all possible paths from the connected components.
 
         Returns:
-            List of paths, each path being a list of (x, y, z) tuples
+            List of paths, each path being a list of SampledPoint
         """
         components = self.find_connected_components()
         paths = []
@@ -112,7 +124,7 @@ class PathFinder:
 
         return paths
 
-    def plot_paths(self, paths: list[list[tuple[float, float, float]]]) -> None:
+    def plot_paths(self, paths: list[list[SampledPoint]]) -> None:
         """
         Displays the computed paths in a 3D graph.
 
@@ -122,19 +134,29 @@ class PathFinder:
         ax = fig.add_subplot(111, projection="3d")
 
         for i, path in enumerate(paths):
-            path = np.array(path)
-            if len(path) > 1:
-                ax.scatter(path[:, 0], path[:, 1], path[:, 2], c="red", marker="o")
+            # Extract coordinates and color from SampledPoint
+            coords = np.array([point.coordinates for point in path])
+            colors = [
+                [point.color[0] / 255, point.color[1] / 255, point.color[2] / 255]
+                for point in path
+            ]
+
+            if len(coords) > 1:
+                ax.scatter(
+                    coords[:, 0], coords[:, 1], coords[:, 2], c=colors, marker="o"
+                )
                 ax.plot(
-                    path[:, 0],
-                    path[:, 1],
-                    path[:, 2],
+                    coords[:, 0],
+                    coords[:, 1],
+                    coords[:, 2],
                     marker="o",
                     linestyle="-",
                     label=f"Path {i + 1}",
                 )
             else:
-                ax.scatter(path[:, 0], path[:, 1], path[:, 2], c="blue", marker="x")
+                ax.scatter(
+                    coords[:, 0], coords[:, 1], coords[:, 2], c="blue", marker="x"
+                )
 
         ax.set_xlabel("X")
         ax.set_ylabel("Y")
@@ -145,21 +167,28 @@ class PathFinder:
 
 def main() -> None:
     """Main function to execute the PathFinder with a sample mesh and plot the paths."""
-    mesh = Mesh(
-        "duck_factory/model.obj",
-        "duck_factory/Génère_moi_un_canar_0219074804_texture.png",
-    )
-    points = mesh.get_point_cloud()
-    random.shuffle(points)
-    points = points[:1000]
+    BASE_COLOR = (255, 255, 0, 255)
+    COLORS = [
+        BASE_COLOR,  # Yellow
+        (0, 0, 0, 255),  # Black
+        (0, 0, 255, 255),  # Blue
+        (0, 255, 0, 255),  # Green
+        (0, 255, 255, 255),  # Cyan
+        (255, 0, 0, 255),  # Red
+        (255, 255, 255, 255),  # White
+    ]
 
-    print(f"Number of points: {len(points)}")
-    points_all = [
-        point[0] for point in points
-    ]  # Extracting (x, y, z) coordinates from the point cloud [(x, y, z), (r, g, b)]
+    mesh = trimesh.load_mesh("DuckComplete.obj")
+    points_by_color = sample_mesh_points(mesh, BASE_COLOR, COLORS, n_samples=50000)
+    clusters_flat = cluster_points(points_by_color)
 
-    path_finder = PathFinder(points_all, 0.1)
-    paths = path_finder.find_paths()
+    paths = []
+    for points, _, _ in clusters_flat:
+        path_finder = PathFinder(points, 0.1)
+        paths.extend(path_finder.find_paths())
+
+    n_points = sum([len(path) for path in paths])
+    print(f"Number of points: {n_points}")
 
     print(
         f"Number of paths (length > 1): {len([path for path in paths if len(path) > 1])}"

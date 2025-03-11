@@ -66,347 +66,223 @@ def mesh_to_paths(
     return paths, all_points
 
 
-def is_point_in_tube(
-    point: tuple[float, float, float],
-    p0: tuple[float, float, float],
-    normal: tuple[float, float, float],
-    diameter: float,
-    start_dist: float = 0,
-) -> bool:
+class PathAnalyzer:
     """
-    Check if a 3D point is inside an infinite tube defined by a point (p0), a normal (direction), and radius d.
+    Class to analyze path reachability using a pen structure consisting of a cone followed by a tube.
 
-    Parameters:
-        point (tuple): The (x, y, z) coordinates of the point.
-        p0 (tuple): The (x, y, z) point through which the tube passes.
-        normal (tuple): The (dx, dy, dz) normal vector defining the tube's axis.
-        d (float): The radius of the tube.
-
-    Returns:
-        bool: True if the point is inside the tube, False otherwise.
-    """
-    p = np.array(point)
-    a = np.array(p0)
-    n = np.array(normal)
-
-    # Normalize the normal direction
-    n = n / np.linalg.norm(n)
-
-    # Compute the projection of (p - a) onto the normal
-    projection_length = np.dot(p - a, n)
-
-    # Ensure the point is in the correct direction (one-sided tube)
-    if projection_length < start_dist:
-        return np.False_  # Point is behind p0, so it's outside the tube
-
-    # Closest point on the tube's axis
-    closest_point = a + projection_length * n
-
-    # Compute distance from the point to the axis
-    distance = np.linalg.norm(p - closest_point)
-
-    return distance <= (diameter / 2)
-
-
-def is_point_in_cone(
-    point: tuple[float, float, float],
-    p0: tuple[float, float, float],
-    normal: tuple[float, float, float],
-    height: float,
-    diameter: float,
-) -> bool:
-    """
-    Check if a 3D point is inside a cone defined by a tip point (p0), axis (normal), height, and base diameter.
-
-    Parameters:
-        point (tuple): The (x, y, z) coordinates of the point.
-        p0 (tuple): The (x, y, z) coordinates of the cone tip.
-        normal (tuple): The (dx, dy, dz) normal vector defining the cone's axis.
-        height (float): The height of the cone.
-        diameter (float): The diameter of the cone's base.
-
-    Returns:
-        bool: True if the point is inside the cone, False otherwise.
-    """
-    p = np.array(point)
-    a = np.array(p0)
-    n = np.array(normal)
-
-    # Normalize the normal direction
-    n = n / np.linalg.norm(n)
-
-    # Compute the projection of (p - a) onto the normal (height along axis)
-    projection_length = np.dot(p - a, n)
-
-    # Ensure the point is in the valid height range (inside the finite cone)
-    if projection_length < 0 or projection_length > height:
-        return np.False_  # Point is outside the height limits
-
-    # Compute the radius of the cone at this height (linear interpolation)
-    max_radius = (diameter / 2) * (projection_length / height)
-
-    # Closest point on the cone axis
-    closest_point = a + projection_length * n
-
-    # Compute perpendicular distance from the axis
-    distance_from_axis = np.linalg.norm(p - closest_point)
-
-    return distance_from_axis <= max_radius
-
-
-def is_point_inside_pen(
-    point: tuple[float, float, float],
-    p0: tuple[float, float, float],
-    normal: tuple[float, float, float],
-    tube_length: float,
-    diameter: float,
-    cone_height: float,
-) -> bool:
-    """
-    Check if a 3D point is inside a structure consisting of a cone followed by a tube, representing the pen.
-
-    Parameters:
-        point (tuple): The (x, y, z) coordinates of the point.
-        p0 (tuple): The (x, y, z) coordinates of the cone tip (start of structure).
-        normal (tuple): The (dx, dy, dz) normal vector defining the axis direction.
+    Attributes:
         tube_length (float): The length of the cylindrical tube.
         diameter (float): The diameter of both the tube and the cone base.
         cone_height (float): The height of the cone.
-
-    Returns:
-        bool: True if the point is inside the tube or the cone, False otherwise.
-    """
-    p = np.array(point)
-    a = np.array(p0)
-    n = np.array(normal)
-
-    # Exclude the point p0 explicitly
-    if np.all(p == a):
-        return False
-
-    # Normalize the normal direction
-    n = n / np.linalg.norm(n)
-
-    # Compute the projection of (p - a) onto the normal (height along axis)
-    projection_length = np.dot(p - a, n)
-
-    radius = diameter / 2
-
-    # Compute the closest point on the axis (for both tube and cone)
-    closest_point = a + projection_length * n
-
-    # Compute perpendicular distance from the axis
-    distance_from_axis = np.linalg.norm(p - closest_point)
-
-    # Check if point is inside the cone
-    if 0 <= projection_length <= cone_height:
-        max_radius = radius * (projection_length / cone_height)
-        if distance_from_axis <= max_radius:
-            return True
-
-    # Check if point is inside the tube
-    projection_length_tube = projection_length - cone_height
-
-    if 0 <= projection_length_tube <= tube_length:
-        if distance_from_axis <= radius:
-            return True
-
-    return False  # Not inside the tube or cone
-
-
-def generate_cone_vectors(
-    normal: tuple[float, float, float], angle: float, num_vectors: int
-) -> list[np.ndarray]:
-    """
-    Generate multiple vectors that form a cone shape around the normal, all at a given angle.
-
-    Parameters:
-        normal (tuple): The (dx, dy, dz) normal vector defining the main axis.
-        angle (float): The angle in degrees between each generated vector and the normal.
+        step_angle (float): The angle in degrees to increment the normal during alternative searches.
         num_vectors (int): The number of vectors to generate around the normal.
-
-    Returns:
-        list[np.ndarray]: A list of unit vectors forming the cone.
     """
-    normal = np.array(normal)
-    normal = normal / np.linalg.norm(normal)  # Ensure the normal is a unit vector
 
-    # Create an arbitrary perpendicular vector
-    arbitrary_vector = (
-        np.array([1, 0, 0]) if abs(normal[0]) < 0.9 else np.array([0, 1, 0])
-    )
-    perp_vector = np.cross(normal, arbitrary_vector)
-    perp_vector = perp_vector / np.linalg.norm(perp_vector)
+    def __init__(
+        self,
+        tube_length: float,
+        diameter: float,
+        cone_height: float,
+        step_angle: float,
+        num_vectors: int,
+    ):
+        self.tube_length = tube_length
+        self.diameter = diameter
+        self.cone_height = cone_height
+        self.step_angle = step_angle
+        self.num_vectors = num_vectors
 
-    # Convert angle to radians
-    angle_rad = np.radians(angle)
+    def is_reachable(
+        self,
+        point: tuple[float, float, float],
+        normal: tuple[float, float, float],
+        model_points: list[tuple[float, float, float]],
+    ) -> bool:
+        """
+        Check if a given point with a specific normal is reachable without collision.
 
-    # Generate multiple vectors
-    cone_vectors = []
-    for i in range(num_vectors):
-        theta = (2 * np.pi * i) / num_vectors  # Evenly space angles around the normal
+        Parameters:
+            point (tuple): The (x, y, z) coordinates of the point.
+            normal (tuple): The (dx, dy, dz) normal vector defining the main axis.
+            model_points (list): A list of points representing the model to avoid.
 
-        # Rotate perp_vector around the normal to distribute vectors evenly
-        rotated_perp = np.cos(theta) * perp_vector + np.sin(theta) * np.cross(
-            normal, perp_vector
+        Returns:
+            bool: True if the point is reachable, False otherwise.
+        """
+        return not any(
+            self.is_point_inside_pen(model_point, point, normal)
+            for model_point in model_points
         )
 
-        # Rotate this new vector by the specified angle
-        rotated_vector = (
-            np.cos(angle_rad) * normal
-            + np.sin(angle_rad) * rotated_perp
-            + (1 - np.cos(angle_rad)) * np.dot(normal, rotated_perp) * rotated_perp
+    def is_point_inside_pen(
+        self,
+        point: tuple[float, float, float],
+        p0: tuple[float, float, float],
+        normal: tuple[float, float, float],
+    ) -> bool:
+        """
+        Check if a 3D point is inside a structure consisting of a cone followed by a tube, representing the pen.
+
+        Parameters:
+            point (tuple): The (x, y, z) coordinates of the point.
+            p0 (tuple): The (x, y, z) coordinates of the cone tip (start of structure).
+            normal (tuple): The (dx, dy, dz) normal vector defining the axis direction.
+
+        Returns:
+            bool: True if the point is inside the tube or the cone, False otherwise.
+        """
+        p = np.array(point)
+        a = np.array(p0)
+        n = np.array(normal)
+
+        # Exclude the point p0 explicitly
+        if np.all(p == a):
+            return False
+
+        # Normalize the normal direction
+        n = n / np.linalg.norm(n)
+        # Compute the projection of (p - a) onto the normal (height along axis)
+        projection_length = np.dot(p - a, n)
+        radius = self.diameter / 2
+        # Compute the closest point on the axis (for both tube and cone)
+        closest_point = a + projection_length * n
+        # Compute perpendicular distance from the axis
+        distance_from_axis = np.linalg.norm(p - closest_point)
+
+        # Check if point is inside the cone
+        if 0 <= projection_length <= self.cone_height:
+            max_radius = radius * (projection_length / self.cone_height)
+            if distance_from_axis <= max_radius:
+                return True
+
+        # Check if point is inside the tube
+        projection_length_tube = projection_length - self.cone_height
+        if 0 <= projection_length_tube <= self.tube_length:
+            if distance_from_axis <= radius:
+                return True
+
+        return False  # Not inside the tube or cone
+
+    def generate_cone_vectors(
+        self, normal: tuple[float, float, float], angle: float
+    ) -> list[np.ndarray]:
+        """
+        Generate multiple vectors that form a cone shape around the normal, all at a given angle.
+
+        Parameters:
+            normal (tuple): The (dx, dy, dz) normal vector defining the main axis.
+            angle (float): The angle in degrees between each generated vector and the normal.
+
+        Returns:
+            list[np.ndarray]: A list of unit vectors forming the cone.
+        """
+        normal = np.array(normal) / np.linalg.norm(normal)
+        arbitrary_vector = (
+            np.array([1, 0, 0]) if abs(normal[0]) < 0.9 else np.array([0, 1, 0])
         )
 
-        cone_vectors.append(rotated_vector)
+        perp_vector = np.cross(normal, arbitrary_vector)
+        perp_vector = perp_vector / np.linalg.norm(perp_vector)
 
-    return cone_vectors
+        angle_rad = np.radians(angle)
 
+        # Generate multiple vectors
+        cone_vectors = []
+        for i in range(self.num_vectors):
+            theta = (
+                2 * np.pi * i
+            ) / self.num_vectors  # Evenly space angles around the normal
+            # Rotate perp_vector around the normal to distribute vectors evenly
+            rotated_perp = np.cos(theta) * perp_vector + np.sin(theta) * np.cross(
+                normal, perp_vector
+            )
 
-def is_reachable(
-    point: tuple[float, float, float],
-    normal: tuple[float, float, float],
-    model_points: list[tuple[float, float, float]],
-    tube_length: float,
-    diameter: float,
-    cone_height: float,
-) -> bool:
-    """Check if a given point with a specific normal is reachable with the pen without collision to the model.
+            # Rotate this new vector by the specified angle
+            rotated_vector = (
+                np.cos(angle_rad) * normal
+                + np.sin(angle_rad) * rotated_perp
+                + (1 - np.cos(angle_rad)) * np.dot(normal, rotated_perp) * rotated_perp
+            )
+            cone_vectors.append(rotated_vector)
+        return cone_vectors
 
-    Parameters:
-        point (tuple): The (x, y, z) coordinates of the point.
-        normal (tuple): The (dx, dy, dz) normal vector defining the main axis.
-        model_points (list): A list of points representing the model to avoid.
-        tube_length (float): The length of the cylindrical tube.
-        diameter (float): The diameter of both the tube and the cone base.
-        cone_height (float): The height of the cone.
+    def find_valid_orientation(
+        self,
+        point: tuple[float, float, float],
+        normal: tuple[float, float, float],
+        model_points: list[tuple[float, float, float]],
+    ) -> tuple[bool, tuple[float, float, float]]:
+        """
+        Find a valid orientation if the default one causes a collision.
 
-    Returns:
-        bool: True if the point is reachable, False otherwise.
-    """
-    return not any(
-        is_point_inside_pen(
-            model_point, point, normal, tube_length, diameter, cone_height
-        )
-        for model_point in model_points
-    )
+        Parameters:
+            point (tuple): The (x, y, z) coordinates of the point.
+            normal (tuple): The (dx, dy, dz) normal vector defining the main axis.
+            model_points (list): A list of points representing the model to avoid.
 
+        Returns:
+            tuple[bool, tuple[float, float, float]]: A tuple containing a boolean indicating if a valid orientation was found and the valid normal direction.
+        """
+        if self.is_reachable(point, normal, model_points):
+            return True, normal  # Default normal is valid
 
-def find_valid_orientation(
-    point: tuple[float, float, float],
-    normal: tuple[float, float, float],
-    model_points: list[tuple[float, float, float]],
-    tube_length: float,
-    diameter: float,
-    cone_height: float,
-    step_angle: float,
-    num_vectors: int,
-) -> tuple[bool, tuple[float, float, float]]:
-    """Find a valid orientation if the default one causes a collision.
+        for angle in range(self.step_angle, 91, self.step_angle):
+            alternative_vectors = self.generate_cone_vectors(normal, angle)
 
-    Parameters:
-        point (tuple): The (x, y, z) coordinates of the point.
-        normal (tuple): The (dx, dy, dz) normal vector defining the main axis.
-        model_points (list): A list of points representing the model to avoid.
-        tube_length (float): The length of the cylindrical tube.
-        diameter (float): The diameter of both the tube and the cone base.
-        cone_height (float): The height of the cone.
-        step_angle (float): The angle in degrees to increment the normal.
-        num_vectors (int): The number of vectors to generate around the normal.
+            for alt_normal in alternative_vectors:
+                if self.is_reachable(point, alt_normal, model_points):
+                    # print(f"Found a valid alternative orientation at {angle}°")
+                    return True, alt_normal  # Found a valid alternative
 
-    Returns:
-        tuple[bool, tuple[float, float, float]]: A tuple containing a boolean indicating if a valid orientation was found and the valid normal direction.
-    """
-    if is_reachable(point, normal, model_points, tube_length, diameter, cone_height):
-        return True, normal  # Default normal is valid
+        # print("No valid orientation found")
+        return False, normal  # No valid orientation foundreturn False, normal
 
-    for angle in range(
-        step_angle, 91, step_angle
-    ):  # Test angles in steps of 10° up to max_angle
-        alternative_vectors = generate_cone_vectors(normal, angle, num_vectors)
-        for alt_normal in alternative_vectors:
-            if is_reachable(
-                point, alt_normal, model_points, tube_length, diameter, cone_height
-            ):
-                # print(f"Found a valid alternative orientation at {angle}°")
-                return True, alt_normal  # Found a valid alternative
+    def filter_reachable_points(
+        self,
+        data_points: list[
+            tuple[tuple[float, float, float], tuple[float, float, float]]
+        ],
+        model_points: list[tuple[float, float, float]],
+    ) -> tuple[
+        list[tuple[tuple[float, float, float], tuple[float, float, float]]],
+        list[tuple[float, float, float]],
+    ]:
+        """
+        Filter a list of data points to keep only the reachable ones.
 
-    # print("No valid orientation found")
-    return False, normal  # No valid orientation found
+        Parameters:
+            data_points (list): A list of (point, normal) tuples to filter.
+            model_points (list): A list of points representing the model to avoid.
+            diameter (float): The diameter of both the tube and the cone base.
 
-
-def filter_reachable_points(
-    data_points: list[tuple[tuple[float, float, float], tuple[float, float, float]]],
-    model_points: list[tuple[float, float, float]],
-    tube_length: float,
-    diameter: float,
-    cone_height: float,
-    step_angle: float,
-    num_vectors: int,
-) -> tuple[
-    list[tuple[tuple[float, float, float], tuple[float, float, float]]],
-    list[tuple[float, float, float]],
-]:
-    """Filter a list of data points to keep only the reachable ones.
-
-    Parameters:
-        data_points (list): A list of (point, normal) tuples to filter.
-        model_points (list): A list of points representing the model to avoid.
-        tube_length (float): The length of the cylindrical tube.
-        diameter (float): The diameter of both the tube and the cone base.
-        cone_height (float): The height of the cone.
-        step_angle (float): The angle in degrees to increment the normal.
-        num_vectors (int): The number of vectors to generate around the normal.
-
-    Returns:
-        tuple: A tuple containing a list of updated data points with reachable orientation and a list of unreachable points.
-    """
-    updated_data_points = []
-    unreachable_points = []
-
-    for point, normal in data_points:
-        valid, new_normal = find_valid_orientation(
-            point=point,
-            normal=normal,
-            model_points=model_points,
-            tube_length=tube_length,
-            diameter=diameter,
-            cone_height=cone_height,
-            step_angle=step_angle,
-            num_vectors=num_vectors,
-        )
-        if valid:
-            updated_data_points.append((point, new_normal))
-        else:
-            unreachable_points.append(point)
-
-    return updated_data_points, unreachable_points
+        Returns:
+            tuple: A tuple containing a list of updated data points with reachable orientation and a list of unreachable points.
+        """
+        updated_data_points = []
+        unreachable_points = []
+        for point, normal in data_points:
+            valid, new_normal = self.find_valid_orientation(point, normal, model_points)
+            if valid:
+                updated_data_points.append((point, new_normal))
+            else:
+                unreachable_points.append(point)
+        return updated_data_points, unreachable_points
 
 
 if __name__ == "__main__":
-    tube_length = 5e1
-    diameter = 2e-2
-    cone_height = 1e-2
-    step_angle = 10  # Angle in degrees to increment the normal
-    num_vectors = 24  # Number of alternative directions (24 -> 15° between each)
+    analyzer = PathAnalyzer(
+        tube_length=5e1, diameter=2e-2, cone_height=1e-2, step_angle=10, num_vectors=24
+    )
 
     mesh = load_mesh("DuckComplete.obj")
     paths, all_points = mesh_to_paths(mesh)
-
     all_points = [pt.coordinates for pt in all_points]
-
     path_points = [
         ((x, y, z), normal) for color, path in paths for x, y, z, normal in path
     ]
 
-    updated_points, unreachable_points = filter_reachable_points(
-        data_points=path_points,
-        model_points=all_points,
-        tube_length=tube_length,
-        diameter=diameter,
-        cone_height=cone_height,
-        step_angle=step_angle,
-        num_vectors=num_vectors,
+    updated_points, unreachable_points = analyzer.filter_reachable_points(
+        path_points, all_points
     )
 
     print(f"Number of reachable points: {len(updated_points)}")

@@ -251,7 +251,7 @@ def generate_cone_vectors(
     Parameters:
         normal (tuple): The (dx, dy, dz) normal vector defining the main axis.
         angle (float): The angle in degrees between each generated vector and the normal.
-        num_vectors (int): The number of vectors to generate around the cone.
+        num_vectors (int): The number of vectors to generate around the normal.
 
     Returns:
         list[np.ndarray]: A list of unit vectors forming the cone.
@@ -291,266 +291,148 @@ def generate_cone_vectors(
     return cone_vectors
 
 
-def check_path_with_pen(
+def is_reachable(
+    point: tuple[float, float, float],
+    normal: tuple[float, float, float],
+    model_points: list[tuple[float, float, float]],
+    tube_length: float,
+    diameter: float,
+    cone_height: float,
+) -> bool:
+    """Check if a given point with a specific normal is reachable with the pen without collision to the model.
+
+    Parameters:
+        point (tuple): The (x, y, z) coordinates of the point.
+        normal (tuple): The (dx, dy, dz) normal vector defining the main axis.
+        model_points (list): A list of points representing the model to avoid.
+        tube_length (float): The length of the cylindrical tube.
+        diameter (float): The diameter of both the tube and the cone base.
+        cone_height (float): The height of the cone.
+
+    Returns:
+        bool: True if the point is reachable, False otherwise.
+    """
+    return not any(
+        is_point_inside_pen(
+            model_point, point, normal, tube_length, diameter, cone_height
+        )
+        for model_point in model_points
+    )
+
+
+def find_valid_orientation(
+    point: tuple[float, float, float],
+    normal: tuple[float, float, float],
+    model_points: list[tuple[float, float, float]],
+    tube_length: float,
+    diameter: float,
+    cone_height: float,
+    normal_angle: float,
+    num_vectors: int,
+) -> tuple[bool, tuple[float, float, float]]:
+    """Find a valid orientation if the default one causes a collision.
+
+    Parameters:
+        point (tuple): The (x, y, z) coordinates of the point.
+        normal (tuple): The (dx, dy, dz) normal vector defining the main axis.
+        model_points (list): A list of points representing the model to avoid.
+        tube_length (float): The length of the cylindrical tube.
+        diameter (float): The diameter of both the tube and the cone base.
+        cone_height (float): The height of the cone.
+        normal_angle (float): The angle in degrees between each generated vector and the normal.
+        num_vectors (int): The number of vectors to generate around the normal.
+
+    Returns:
+        tuple[bool, tuple[float, float, float]]: A tuple containing a boolean indicating if a valid orientation was found and the valid normal direction.
+    """
+    if is_reachable(point, normal, model_points, tube_length, diameter, cone_height):
+        return True, normal  # Default normal is valid
+
+    alternative_vectors = generate_cone_vectors(normal, normal_angle, num_vectors)
+    for alt_normal in alternative_vectors:
+        if is_reachable(
+            point, alt_normal, model_points, tube_length, diameter, cone_height
+        ):
+            print("Found a valid alternative orientation")
+            return True, alt_normal  # Found a valid alternative
+
+    print("No valid orientation found")
+    return False, normal  # No valid orientation found
+
+
+def filter_reachable_points(
     data_points: list[tuple[tuple[float, float, float], tuple[float, float, float]]],
     model_points: list[tuple[float, float, float]],
     tube_length: float,
     diameter: float,
     cone_height: float,
-    cone_angle: float,
+    normal_angle: float,
     num_vectors: int,
-) -> tuple[list, list]:
-    """
-    Check if a list of points is reachable with a pen structure (cone followed by tube) around the points. If not, generate alternative directions with angle to the normal.
+) -> tuple[
+    list[tuple[tuple[float, float, float], tuple[float, float, float]]],
+    list[tuple[float, float, float]],
+]:
+    """Filter a list of data points to keep only the reachable ones.
 
     Parameters:
-        data_points (list[tuple]): A list of tuples containing points and their normals ((x, y, z), (nx, ny, nz)).
-        model_points (list[tuple]): A list of model points to check for collisions.
+        data_points (list): A list of (point, normal) tuples to filter.
+        model_points (list): A list of points representing the model to avoid.
         tube_length (float): The length of the cylindrical tube.
         diameter (float): The diameter of both the tube and the cone base.
         cone_height (float): The height of the cone.
-        cone_angle (float): The angle in degrees between each generated vector and the normal.
-        num_vectors (int): The number of vectors to generate around the cone.
+        normal_angle (float): The angle in degrees between each generated vector and the normal.
+        num_vectors (int): The number of vectors to generate around the normal.
 
     Returns:
-        tuple[list, list]: Two lists of reachable and unreachable points.
+        tuple: A tuple containing a list of updated data points with reachable orientation and a list of unreachable points.
     """
-    reachable_points = []
+    updated_data_points = []
     unreachable_points = []
 
     for point, normal in data_points:
-        # Check if the default normal workss
-        collision = any(
-            is_point_inside_pen(
-                model_point, point, normal, tube_length, diameter, cone_height
-            )
-            for model_point in model_points
+        valid, new_normal = find_valid_orientation(
+            point,
+            normal,
+            model_points,
+            tube_length,
+            diameter,
+            cone_height,
+            normal_angle,
+            num_vectors,
         )
-
-        if not collision:
-            reachable_points.append(point)
-            continue  # This point is already good
-
-        # Generate alternative directions using cone vectors
-        alternative_vectors = generate_cone_vectors(normal, cone_angle, num_vectors)
-        found_valid = False
-
-        # print("Alternative vectors", alternative_vectors)
-
-        for alt_normal in alternative_vectors:
-            collision = any(
-                is_point_inside_pen(
-                    model_point, point, alt_normal, tube_length, diameter, cone_height
-                )
-                for model_point in model_points
-            )
-
-            if not collision:
-                reachable_points.append(point)
-                found_valid = True
-                print("Found valid alternative")
-                break
-
-        if not found_valid:
-            print("No valid alternative found")
+        if valid:
+            updated_data_points.append((point, new_normal))
+        else:
             unreachable_points.append(point)
 
-    return reachable_points, unreachable_points
-
-
-import matplotlib.pyplot as plt
-
-
-def plot_results(reachable_points, unreachable_points, model_points):
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection="3d")
-
-    if reachable_points:
-        reachable_points = np.array(reachable_points)
-        ax.scatter(
-            reachable_points[:, 0],
-            reachable_points[:, 1],
-            reachable_points[:, 2],
-            c="g",
-            label="Reachable",
-        )
-
-    if unreachable_points:
-        unreachable_points = np.array(unreachable_points)
-        ax.scatter(
-            unreachable_points[:, 0],
-            unreachable_points[:, 1],
-            unreachable_points[:, 2],
-            c="r",
-            label="Unreachable",
-        )
-
-    # if model_points:
-    #     model_points = np.array(model_points)
-    #     ax.scatter(
-    #         model_points[:, 0],
-    #         model_points[:, 1],
-    #         model_points[:, 2],
-    #         c="b",
-    #         marker="x",
-    #         label="Model Points",
-    #     )
-
-    ax.set_xlabel("X")
-    ax.set_ylabel("Y")
-    ax.set_zlabel("Z")
-    ax.legend()
-    plt.show()
+    return updated_data_points, unreachable_points
 
 
 if __name__ == "__main__":
+    tube_length = 5e1
+    diameter = 2e-2
+    cone_height = 1e-2
+    normal_angle = 30  # degrees
+    num_vectors = 15  # Number of alternative directions
+
     mesh = load_mesh("DuckComplete.obj")
     paths, all_points = mesh_to_paths(mesh)
 
     all_points = [pt.coordinates for pt in all_points]
 
-    # ------------------------------
+    path_points = [
+        ((x, y, z), normal) for color, path in paths for x, y, z, normal in path
+    ]
 
-    tube_length = 5e1
-    diameter = 2e-2
-    cone_height = 1e-2
-    cone_angle = 30  # degrees
-    num_vectors = 15  # Number of alternative directions
-
-    path_points = []
-    for color, path in paths:
-        for point in path:
-            x, y, z, normal = point
-            path_points.append(((x, y, z), normal))
-
-    reachable, unreachable = check_path_with_pen(
+    updated_points, unreachable_points = filter_reachable_points(
         path_points,
         all_points,
         tube_length,
         diameter,
         cone_height,
-        cone_angle,
+        normal_angle,
         num_vectors,
     )
 
-    # print("Reachable points:", reachable)
-    # print("Unreachable points:", unreachable)
-
-    plot_results(reachable, unreachable, all_points)
-
-    # --------------------------------
-
-    # for color, path in paths:
-    #     print(f"Color: {color}")
-    #     for point in path:
-    #         x, y, z, normal = point
-    #         nx, ny, nz = normal
-
-    #         for pt in points:
-    #             if is_point_inside_pen(
-    #                 pt.coordinates,
-    #                 (x, y, z),
-    #                 normal,
-    #                 tube_length=5e1,
-    #                 diameter=2e-2,
-    #                 cone_height=1e-2,
-    #             ):
-    #                 print("Point inside pen")
-
-    #                 break
-
-    #  -------------------------
-
-    # for color, path in paths:
-    #     print(f"Color: {color}")
-    #     for point in path:
-    #         x, y, z, normal = point
-    #         nx, ny, nz = normal
-
-    #         for pt in points:
-    #             if is_point_inside_pen(
-    #                 pt.coordinates,
-    #                 (x, y, z),
-    #                 normal,
-    #                 tube_length=5e1,
-    #                 diameter=2e-2,
-    #                 cone_height=1e-2,
-    #             ):
-    #                 # Generate new vectors from cone
-    #                 new_vectors = generate_cone_vectors(normal, angle=30, num_vectors=8)
-    #                 found_solution = False
-    #                 for new_vector in new_vectors:
-    #                     if not is_point_inside_pen(
-    #                         pt.coordinates,
-    #                         (x, y, z),
-    #                         new_vector,
-    #                         tube_length=5e1,
-    #                         diameter=2e-2,
-    #                         cone_height=1e-2,
-    #                     ):
-    #                         found_solution = True
-    #                         break
-    #                 print("out of loop")
-    #                 break
-
-    # create a new tuple with ((x, y, z), (nx, ny, nz))
-
-    # -------------------------------------------
-
-    # path_points = []
-    # for color, path in paths:
-    #     for point in path:
-    #         x, y, z, normal = point
-    #         path_points.append(((x, y, z), normal))
-
-    # check_points = []
-
-    # while len(path_points) > 0:
-    #     point = path_points.pop(0)
-    #     x, y, z = point[0]
-    #     nx, ny, nz = point[1]
-
-    #     for pt in all_points:
-    #         if is_point_inside_pen(
-    #             pt.coordinates,
-    #             (x, y, z),
-    #             point[1],
-    #             tube_length=5e1,
-    #             diameter=2e-2,
-    #             cone_height=1e-2,
-    #         ):
-    #             check_points.append(point)
-
-    # print("Remaining points to not take normal", len(check_points))
-
-    # # for each points in check_points, generate new vectors from cone. And the check if for one there is no point inside the pen
-
-    # for point in check_points:
-    #     print("Point", point)
-    #     x, y, z = point[0]
-    #     nx, ny, nz = point[1]
-
-    #     # Generate new vectors from cone
-    #     new_vectors = generate_cone_vectors(point[1], angle=30, num_vectors=8)
-    #     for new_vector in new_vectors:
-    #         found_no_solution = True
-    #         for pt in all_points:
-    #             if not is_point_inside_pen(
-    #                 pt.coordinates,
-    #                 (x, y, z),
-    #                 new_vector,
-    #                 tube_length=5e1,
-    #                 diameter=2e-2,
-    #                 cone_height=1e-2,
-    #             ):
-    #                 found_no_solution = False
-    #                 break
-    #         if found_no_solution:
-    #             print("Found solution")
-    #         else:
-    #             print("No solution")
-
-    #     print("out of loop")
-    #     break
-
-    # ------------------------------
+    print(f"Number of reachable points: {len(updated_points)}")
+    print(f"Number of unreachable points: {len(unreachable_points)}")

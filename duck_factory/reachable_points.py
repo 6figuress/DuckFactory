@@ -7,7 +7,6 @@ from point_sampling import (
     Point,
     Color,
 )
-from scipy.spatial.transform import Rotation
 
 type Quaternion = tuple[float, float, float, float]
 type PathPosition = tuple[*Point, *Quaternion]
@@ -27,17 +26,18 @@ COLORS = [
 
 def mesh_to_paths(
     mesh: Trimesh, n_samples: int = 50_000, max_dist: float = 0.1
-) -> list[Path]:
+) -> tuple[list[Path], list[Point]]:
     """
-    Convert a mesh to a list of paths, each path being of a certain color and containing positions easily usable for plotting.
+    Convert a mesh to a list of paths by sampling points and clustering them.
 
-    Args:
-        mesh: The mesh to convert to paths
-        n_samples: The number of samples to take from the mesh
-        max_dist: The maximum distance between two samples for neighborhood
+    Parameters:
+        mesh (Trimesh): The mesh to convert to paths.
+        n_samples (int): The number of points to sample.
+        max_dist (float): The maximum distance between points to consider them connected.
 
     Returns:
-        List of paths, each containing a color and a list of PathPosition (point and quaternion)
+        list[Path]: A list of paths with colors and points
+        list[Point]: A list of all sampled points
     """
     sampled_points = sample_mesh_points(
         mesh, base_color=BASE_COLOR, colors=COLORS, n_samples=n_samples
@@ -45,53 +45,25 @@ def mesh_to_paths(
 
     clusters = cluster_points(sampled_points)
 
-    # Compute the paths for each cluster
+    all_points = [point for cluster in clusters for point in cluster[0]]
     paths = []
-    all_points = []
     for points, color, is_noise in clusters:
-        all_points.extend(points)
-        if is_noise:
-            # The noise clusters contain points that we don't want to connect
-            # Create a new path for each point
-            for point in points:
-                pass
-        #                paths.append((color, [point]))
-        else:
-            # Connect the points in the cluster to form paths
-
+        if not is_noise:
             path_finder = PathFinder(points, max_dist)
-            paths_positions = path_finder.find_paths()
+            found_paths = path_finder.find_paths()
+            formatted_paths = [
+                (
+                    point.coordinates[0],
+                    point.coordinates[1],
+                    point.coordinates[2],
+                    point.normal,
+                )
+                for path in found_paths
+                for point in path
+            ]
+            paths.append((color, formatted_paths))
 
-            for path in paths_positions:
-                paths.append((color, path))
-
-    rpaths = []
-    for color, points in paths:
-        p = []
-        for point in points:
-            normal = point.normal
-
-            # rotation around z-axis
-            yaw = np.degrees(np.arctan2(normal[1], normal[0]))
-
-            # rotation around y-axis (assuming positive y-axis is up)
-            pitch = np.degrees(np.arcsin(-normal[2]))
-
-            # No rotation around x-axis
-            roll = 0
-
-            """ # Convert all that to a quaternion
-            quat = Rotation.from_euler(
-                "xyz", [roll, pitch, yaw], degrees=True
-            ).as_quat()
-
-            p.append((*point.coordinates, *quat)) """
-
-            p.append((*point.coordinates, normal))
-
-        rpaths.append((color, p))
-
-    return rpaths, all_points
+    return paths, all_points
 
 
 def is_point_in_tube(

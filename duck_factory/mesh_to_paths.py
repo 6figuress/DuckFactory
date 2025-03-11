@@ -8,6 +8,7 @@ from point_sampling import (
     Color,
 )
 from scipy.spatial.transform import Rotation
+import json
 
 type Quaternion = tuple[float, float, float, float]
 type PathPosition = tuple[*Point, *Quaternion]
@@ -45,6 +46,20 @@ def mesh_to_paths(
 
     clusters = cluster_points(sampled_points)
 
+    for points, _, _ in clusters:
+        for point in points:
+            # convert from y-up to z-up coordinate system
+            point.coordinates = (
+                point.coordinates[0],
+                point.coordinates[2],
+                point.coordinates[1],
+            )
+            point.normal = (
+                point.normal[0],
+                point.normal[2],
+                point.normal[1],
+            )
+
     # Compute the paths for each cluster
     paths = []
     for points, color, is_noise in clusters:
@@ -52,8 +67,7 @@ def mesh_to_paths(
             # The noise clusters contain points that we don't want to connect
             # Create a new path for each point
             for point in points:
-                pass
-        #                paths.append((color, [point]))
+                paths.append((color, [point]))
         else:
             # Connect the points in the cluster to form paths
             path_finder = PathFinder(points, max_dist)
@@ -66,20 +80,19 @@ def mesh_to_paths(
     for color, points in paths:
         p = []
         for point in points:
-            normal = point.normal
+            n = point.normal
 
-            # rotation around z-axis
-            yaw = np.degrees(np.arctan2(normal[1], normal[0]))
-
-            # rotation around y-axis (assuming positive y-axis is up)
-            pitch = np.degrees(np.arcsin(-normal[2]))
+            # normal points outwards, we want our robot to point towards the point
+            normal = (-n[0], -n[1], -n[2])
 
             # No rotation around x-axis
             roll = 0
+            pitch = np.arctan2(normal[0], normal[2])
+            yaw = np.arcsin(-normal[1])
 
             # Convert all that to a quaternion
             quat = Rotation.from_euler(
-                "xyz", [roll, pitch, yaw], degrees=True
+                "xyz", [roll, pitch, yaw], degrees=False
             ).as_quat()
 
             p.append((*point.coordinates, *quat))
@@ -90,11 +103,19 @@ def mesh_to_paths(
 
 
 if __name__ == "__main__":
-    mesh = load_mesh("DuckComplete.obj")
-    paths = mesh_to_paths(mesh)
+    mesh = load_mesh("cube.obj")
+    paths = mesh_to_paths(mesh, max_dist=0.024)
 
     for color, path in paths:
         print(f"Color: {color}")
         for point in path:
             print(f"Point: {point}")
         print()
+
+    print(f"Number of paths: {len(paths)}")
+    print(f"Number of points: {sum([len(path) for _, path in paths])}")
+
+    with open("paths.json", "w") as f:
+        json.dump(paths, f, indent=4)
+
+    print("Paths exported to paths.json")

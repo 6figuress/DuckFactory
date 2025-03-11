@@ -299,7 +299,7 @@ def find_valid_orientation(
     tube_length: float,
     diameter: float,
     cone_height: float,
-    normal_angle: float,
+    step_angle: float,
     num_vectors: int,
 ) -> tuple[bool, tuple[float, float, float]]:
     """Find a valid orientation if the default one causes a collision.
@@ -311,7 +311,7 @@ def find_valid_orientation(
         tube_length (float): The length of the cylindrical tube.
         diameter (float): The diameter of both the tube and the cone base.
         cone_height (float): The height of the cone.
-        normal_angle (float): The angle in degrees between each generated vector and the normal.
+        step_angle (float): The angle in degrees to increment the normal.
         num_vectors (int): The number of vectors to generate around the normal.
 
     Returns:
@@ -320,15 +320,18 @@ def find_valid_orientation(
     if is_reachable(point, normal, model_points, tube_length, diameter, cone_height):
         return True, normal  # Default normal is valid
 
-    alternative_vectors = generate_cone_vectors(normal, normal_angle, num_vectors)
-    for alt_normal in alternative_vectors:
-        if is_reachable(
-            point, alt_normal, model_points, tube_length, diameter, cone_height
-        ):
-            print("Found a valid alternative orientation")
-            return True, alt_normal  # Found a valid alternative
+    for angle in range(
+        step_angle, 91, step_angle
+    ):  # Test angles in steps of 10° up to max_angle
+        alternative_vectors = generate_cone_vectors(normal, angle, num_vectors)
+        for alt_normal in alternative_vectors:
+            if is_reachable(
+                point, alt_normal, model_points, tube_length, diameter, cone_height
+            ):
+                # print(f"Found a valid alternative orientation at {angle}°")
+                return True, alt_normal  # Found a valid alternative
 
-    print("No valid orientation found")
+    # print("No valid orientation found")
     return False, normal  # No valid orientation found
 
 
@@ -338,7 +341,7 @@ def filter_reachable_points(
     tube_length: float,
     diameter: float,
     cone_height: float,
-    normal_angle: float,
+    step_angle: float,
     num_vectors: int,
 ) -> tuple[
     list[tuple[tuple[float, float, float], tuple[float, float, float]]],
@@ -352,7 +355,7 @@ def filter_reachable_points(
         tube_length (float): The length of the cylindrical tube.
         diameter (float): The diameter of both the tube and the cone base.
         cone_height (float): The height of the cone.
-        normal_angle (float): The angle in degrees between each generated vector and the normal.
+        step_angle (float): The angle in degrees to increment the normal.
         num_vectors (int): The number of vectors to generate around the normal.
 
     Returns:
@@ -363,14 +366,14 @@ def filter_reachable_points(
 
     for point, normal in data_points:
         valid, new_normal = find_valid_orientation(
-            point,
-            normal,
-            model_points,
-            tube_length,
-            diameter,
-            cone_height,
-            normal_angle,
-            num_vectors,
+            point=point,
+            normal=normal,
+            model_points=model_points,
+            tube_length=tube_length,
+            diameter=diameter,
+            cone_height=cone_height,
+            step_angle=step_angle,
+            num_vectors=num_vectors,
         )
         if valid:
             updated_data_points.append((point, new_normal))
@@ -384,8 +387,8 @@ if __name__ == "__main__":
     tube_length = 5e1
     diameter = 2e-2
     cone_height = 1e-2
-    normal_angle = 30  # degrees
-    num_vectors = 15  # Number of alternative directions
+    step_angle = 10  # Angle in degrees to increment the normal
+    num_vectors = 24  # Number of alternative directions (24 -> 15° between each)
 
     mesh = load_mesh("DuckComplete.obj")
     paths, all_points = mesh_to_paths(mesh)
@@ -397,13 +400,13 @@ if __name__ == "__main__":
     ]
 
     updated_points, unreachable_points = filter_reachable_points(
-        path_points,
-        all_points,
-        tube_length,
-        diameter,
-        cone_height,
-        normal_angle,
-        num_vectors,
+        data_points=path_points,
+        model_points=all_points,
+        tube_length=tube_length,
+        diameter=diameter,
+        cone_height=cone_height,
+        step_angle=step_angle,
+        num_vectors=num_vectors,
     )
 
     print(f"Number of reachable points: {len(updated_points)}")

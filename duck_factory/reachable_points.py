@@ -1,7 +1,7 @@
 import numpy as np
 from trimesh import Trimesh, load_mesh
-from pointsToPaths import PathFinder
-from point_sampling import (
+from duck_factory.pointsToPaths import PathFinder
+from duck_factory.point_sampling import (
     sample_mesh_points,
     cluster_points,
     Point,

@@ -477,15 +477,18 @@ min_values, max_values = get_bounding_points(mesh)
 print(f"Min values: {min_values}")
 print(f"Max values: {max_values}")
 
-point = [0, 0.1, 0]
-orientation = (1, 0, 0)
+point = [0.0321, 0.0268, 0.04844]
+orientation = (0.3356, 0.0207, 0.9417)
+
+point_2 = [0.0276, 0.11949, -0.0129]
+orientation_2 = (-0.42780, 0.84981, -0.307881)
+
 exit_point = get_intersection_with_obb(mesh, point, orientation)
-# exit_point = [-0.1, -0.1, -0.1]
-point_2 = [0, 0, 0]
-# orientation_2 = (0, 1, 0)
-orientation_2 = (-1, 0, 0)
-# orientation_2 = (-1, 1, 0)
 exit_point_2 = get_intersection_with_obb(mesh, point_2, orientation_2)
+
+# orientation_2 = (-1, 1, 0)
+
+# exit_point = [-0.1, -0.1, -0.1]
 # exit_point_2 = [0.1, 0.1, 0.1]
 print(f"Exit point: {exit_point}")
 print(f"Exit point 2: {exit_point_2}")

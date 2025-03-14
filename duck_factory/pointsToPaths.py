@@ -184,7 +184,7 @@ def main() -> None:
 
     paths = []
     for points, _, _ in clusters_flat:
-        path_finder = PathFinder(points, 0.1)
+        path_finder = PathFinder(points, 0.01)
         paths.extend(path_finder.find_paths())
 
     n_points = sum([len(path) for path in paths])

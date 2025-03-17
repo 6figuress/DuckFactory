@@ -1,5 +1,8 @@
 import numpy as np
 from trimesh import Trimesh, load_mesh
+from trimesh.sample import sample_surface
+from duck_factory.dither_class import Dither
+from duck_factory.reachable_points import PathAnalyzer
 from pointsToPaths import PathFinder
 from point_sampling import (
     sample_mesh_points,
@@ -30,7 +33,10 @@ def mesh_to_paths(
     mesh: Trimesh, n_samples: int = 50_000, max_dist: float = 0.1
 ) -> list[Path]:
     """
-    Convert a mesh to a list of paths, each path being of a certain color and containing positions easily usable for plotting.
+    Do the full conversion from a textured mesh to a list of IK-ready paths.
+
+    Convert a mesh to a list of paths, each path being a 3d position and quaternion (x, y, z, w)
+    and being of a certain color.
 
     Args:
         mesh: The mesh to convert to paths
@@ -40,25 +46,60 @@ def mesh_to_paths(
     Returns:
         List of paths, each containing a color and a list of PathPosition (point and quaternion)
     """
+    # Dither the mesh's texture
+    img = mesh.visual.material.image
+    ditherer = Dither(factor=0.1, algorithm="fs", nc=2)
+    img = ditherer.apply_dithering(img.convert("RGB"))
+    mesh.visual.material.image = img
+
+    # Sample points from the mesh and cluster them by proximity
     sampled_points = sample_mesh_points(
         mesh, base_color=BASE_COLOR, colors=COLORS, n_samples=n_samples
     )
 
-    clusters = cluster_points(sampled_points)
+    path_analyzer = PathAnalyzer(
+        tube_length=5e1,
+        diameter=2e-2,
+        cone_height=1e-2,
+        step_angle=360 / 10,
+        num_vectors=24 / 2,
+    )
 
-    for points, _, _ in clusters:
-        for point in points:
-            # convert from y-up, x-forward, z-right to z-up, x-forward, y-left
-            point.coordinates = (
-                point.coordinates[0],
-                point.coordinates[2],
-                -point.coordinates[1],
-            )
-            point.normal = (
-                point.normal[0],
-                point.normal[2],
-                -point.normal[1],
-            )
+    # TODO: sample duck + stand
+    mesh_points = sample_surface(mesh, n_samples, sample_color=False)
+
+    counter = 0
+    valid_points = []
+    for point in sampled_points:
+        counter += 1
+
+        # Convert from y-up, x-forward, z-right to z-up, x-forward, y-left
+        point.coordinates = (
+            point.coordinates[0],
+            point.coordinates[2],
+            -point.coordinates[1],
+        )
+        point.normal = (
+            point.normal[0],
+            point.normal[2],
+            -point.normal[1],
+        )
+
+        # Find a valid orientation for the point
+        valid, new_norm = path_analyzer.find_valid_orientation(
+            point.coordinates, point.normal, mesh_points[0]
+        )
+
+        if valid:
+            point.normal = new_norm
+        else:
+            # Can't find a way to reach this point, skip it
+            continue
+
+        valid_points.append(point)
+
+    # Cluster the points by proximity and color
+    clusters = cluster_points(valid_points)
 
     # Compute the paths for each cluster
     paths = []
@@ -76,6 +117,7 @@ def mesh_to_paths(
             for path in paths_positions:
                 paths.append((color, path))
 
+    # Format the paths
     rpaths = []
     for color, points in paths:
         p = []

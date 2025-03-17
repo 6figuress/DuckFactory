@@ -3,6 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
+from duck_factory.reachable_points import PathAnalyzer
+
 # # Compute the bounding box of the mesh
 # box = mesh.bounding_box
 
@@ -232,7 +234,12 @@ def get_intersection_with_obb(mesh, point, orientation, precision=3):
     return exit_point
 
 
-def plot_intersection_with_obb(mesh, start_point, normal_at_point, exit_point):
+def plot_intersection_with_obb(
+    mesh: Trimesh,
+    start_point: np.ndarray,
+    normal_at_point: np.ndarray,
+    exit_point: np.ndarray,
+) -> None:
     """
     Plots the intersection of a backward ray with an oriented bounding box.
 
@@ -314,15 +321,22 @@ def plot_intersection_with_obb(mesh, start_point, normal_at_point, exit_point):
     plt.show()
 
 
-def generate_path_on_box(start, end, box):
+def generate_path_on_box(
+    start: tuple[float, float, float],
+    end: tuple[float, float, float],
+    box: Trimesh,
+    restricted_face: list[int] = None,
+) -> list:
     """
-    Generates the shortest path along the edges of an oriented bounding box (OBB).
-    The path does not go through the box, only along its edges.
+    Generates the shortest path along the edges of an oriented bounding box (OBB). The path does not go through the box, only along its edges.
 
-    :param start: Tuple (x, y, z) representing the start point on the edge of the box.
-    :param end: Tuple (x, y, z) representing the end point on the edge of the box.
-    :param box: A trimesh Trimesh object representing the oriented bounding box.
-    :return: List of tuples representing the path along the edges of the box.
+    Parameters:
+        start: Tuple (x, y, z) representing the start point on the edge of the box.
+        end: Tuple (x, y, z) representing the end point on the edge of the box.
+        box: A trimesh Trimesh object representing the oriented bounding box.
+
+    Returns:
+        List of tuples representing the path along the edges of the box.
     """
     # Get the 8 corner vertices of the box
     vertices = np.array(box.vertices)
@@ -331,8 +345,11 @@ def generate_path_on_box(start, end, box):
     edges = set()
     for face in box.faces:
         for i in range(3):
-            edge = tuple(sorted((face[i], face[(i + 1) % 3])))
-            edges.add(edge)
+            if i in restricted_face:
+                continue
+            else:
+                edge = tuple(sorted((face[i], face[(i + 1) % 3])))
+                edges.add(edge)
 
     # Build adjacency list for the box edges
     adjacency = {i: set() for i in range(len(vertices))}
@@ -367,10 +384,12 @@ def generate_path_on_box(start, end, box):
             if neighbor not in visited:
                 queue.append((neighbor, path + [neighbor]))
 
-    return [tuple(map(float, start)), tuple(map(float, end))]
+    return [start, end]
 
 
-def plot_path_on_box(mesh, start_point1, normal1, start_point2, normal2, paths):
+def plot_path_on_box(
+    mesh, start_point1, normal1, start_point2, normal2, paths, restricted_face=None
+):
     """
     Plots the generated paths on an oriented bounding box.
 
@@ -397,7 +416,16 @@ def plot_path_on_box(mesh, start_point1, normal1, start_point2, normal2, paths):
     obb_faces = [
         [obb_vertices[i] for i in face] for face in mesh.bounding_box_oriented.faces
     ]
-    ax.add_collection3d(Poly3DCollection(obb_faces, alpha=0.3, edgecolor="black"))
+
+    for i, face in enumerate(obb_faces):
+        color = (
+            "lightblue"
+            if restricted_face is None or i not in restricted_face
+            else "orange"
+        )
+        ax.add_collection3d(
+            Poly3DCollection([face], alpha=0.3, edgecolor="black", facecolors=color)
+        )
 
     # Plot start points
     ax.scatter(
@@ -473,20 +501,44 @@ def plot_path_on_box(mesh, start_point1, normal1, start_point2, normal2, paths):
 
 mesh = load_mesh("DuckComplete.obj")
 # plot_mesh_with_bounding_box(mesh)
-min_values, max_values = get_bounding_points(mesh)
-print(f"Min values: {min_values}")
-print(f"Max values: {max_values}")
+# min_values, max_values = get_bounding_points(mesh)
+# print(f"Min values: {min_values}")
+# print(f"Max values: {max_values}")
 
+# actual point and orientation from the duck
 point = [0.0321, 0.0268, 0.04844]
 orientation = (0.3356, 0.0207, 0.9417)
 
 point_2 = [0.0276, 0.11949, -0.0129]
 orientation_2 = (-0.42780, 0.84981, -0.307881)
 
+# ---------------------------------
+# on the same face
+# point = [0.0, 0.0, 0.0]
+# orientation = (1.0, 0.0, 0.0)
+
+# point_2 = [0.0, 0.1, 0.0]
+# orientation_2 = (1.0, 0.0, 0.0)
+
+# # ---------------------------------
+# # on opposite faces
+# point = [0.0, 0.0, 0.0]
+# orientation = (1.0, 0.0, 0.0)
+
+# point_2 = [0.0, 0.1, 0.0]
+# orientation_2 = (-1.0, 0.0, 0.0)
+
+# # ---------------------------------
+# # bottom
+# point = [0.0, 0.0, 0.0]
+# orientation = (0.0, 1.0, 0.0)
+
+# point_2 = [0.0, 0.1, 0.0]
+# orientation_2 = (0.0, -1.0, 0.0)
+
+
 exit_point = get_intersection_with_obb(mesh, point, orientation)
 exit_point_2 = get_intersection_with_obb(mesh, point_2, orientation_2)
-
-# orientation_2 = (-1, 1, 0)
 
 # exit_point = [-0.1, -0.1, -0.1]
 # exit_point_2 = [0.1, 0.1, 0.1]
@@ -495,8 +547,15 @@ print(f"Exit point 2: {exit_point_2}")
 # plot_intersection_with_obb(mesh, [0, 0, 0], orientation, exit_point)
 # plot_intersection_with_obb(mesh, [0, 0, 0], orientation_2, exit_point_2)
 
-path = generate_path_on_box(exit_point, exit_point_2, mesh.bounding_box_oriented)
+
+restricted_face = [3, 8]
+
+path = generate_path_on_box(
+    exit_point, exit_point_2, mesh.bounding_box_oriented, restricted_face
+)
 print(f"Path points: {path}")
 
 
-plot_path_on_box(mesh, point, orientation, point_2, orientation_2, path)
+plot_path_on_box(
+    mesh, point, orientation, point_2, orientation_2, path, restricted_face
+)

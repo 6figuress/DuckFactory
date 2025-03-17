@@ -163,6 +163,85 @@ class PathAnalyzer:
 
         return False  # Not inside the tube or cone
 
+    def adjust_orientation_toward_target(
+        self,
+        point: tuple[float, float, float],
+        normal: tuple[float, float, float],
+        model_points: list[tuple[float, float, float]],
+        target_normal: tuple[float, float, float],
+    ) -> np.ndarray:
+        """
+        Adjust the orientation of the normal vector towards the target normal vector.
+
+        Parameters:
+            point (tuple): The (x, y, z) coordinates of the point.
+            normal (tuple): The (dx, dy, dz) normal vector defining the main axis.
+            model_points (list): A list of points representing the model to avoid.
+            target_normal (tuple): The (dx, dy, dz) target normal vector.
+
+        Returns:
+            np.ndarray: The adjusted normal vector.
+        """
+        normal = np.array(normal)
+        target_normal = np.array(target_normal)
+
+        step = 0
+        adjusted_normal = np.array(normal)
+        while step <= 1.0:
+            for i in range(3):  # Adjust each component separately (nx, ny, nz)
+                adjusted_value = np.longdouble((1 - step)) * np.longdouble(
+                    target_normal[i]
+                ) + step * np.longdouble(normal[i])
+
+                adjusted_normal[i] = adjusted_value
+            # if np.all(np.isclose(adjusted_normal, target_normal, atol=1e-5)):
+            if self.is_reachable(point, adjusted_normal, model_points):
+                return adjusted_normal
+
+            step += 0.1  # Move towards the original normal gradually
+            # step += self.step_angle / 90  # Move towards the original normal gradually
+
+        return normal  # Return original normal if no reachable alternative found
+
+    def move_backwards(
+        self,
+        point: tuple[float, float, float],
+        normal: tuple[float, float, float],
+        distance: float = 0.05,
+    ) -> tuple[float, float, float]:
+        """Generate new position by moving backwards along the normal direction of a given distance.
+
+        Returns:
+            tuple: The new position after moving backwards.
+        """
+        return point - distance * np.array(normal)
+
+    def adjust_and_move_backwards(
+        self,
+        point: tuple[float, float, float],
+        normal: tuple[float, float, float],
+        model_points: list[tuple[float, float, float]],
+        target_normal: tuple[float, float, float],
+        step_size: float = 0.05,
+    ) -> tuple[list[tuple[float, float, float]], list[tuple[float, float, float]]]:
+        """Adjust orientation and move backwards until the target normal is achieved.
+
+        Returns:
+            tuple: A tuple containing a list of points and a list of orientations.
+        """
+        point = point
+        points = [point]
+        orientations = [normal]
+        while not np.all(np.isclose(normal, target_normal)):
+            normal = self.adjust_orientation_toward_target(
+                point, normal, model_points, target_normal
+            )
+            point = self.move_backwards(point, normal, step_size)
+            points.append(point)
+            orientations.append(normal)
+
+        return points, orientations
+
     def generate_cone_vectors(
         self, normal: tuple[float, float, float], angle: float
     ) -> list[np.ndarray]:
@@ -269,6 +348,24 @@ class PathAnalyzer:
         return updated_data_points, unreachable_points
 
 
+def filter_negative_nz_points(
+    path_points: list[tuple[tuple[float, float, float], tuple[float, float, float]]],
+) -> list[tuple[tuple[float, float, float], tuple[float, float, float]]]:
+    """
+    Filter points where the normal's z-component (nz) is negative.
+
+    Parameters:
+        path_points (list): List of tuples containing (point, normal)
+
+    Returns:
+        list: Filtered list of points and normal with nz < 0
+    """
+    filtered_points = [
+        (point, normal) for point, normal in path_points if normal[2] < 0
+    ]
+    return filtered_points
+
+
 if __name__ == "__main__":
     analyzer = PathAnalyzer(
         tube_length=5e1, diameter=2e-2, cone_height=1e-2, step_angle=10, num_vectors=24
@@ -281,9 +378,39 @@ if __name__ == "__main__":
         ((x, y, z), normal) for color, path in paths for x, y, z, normal in path
     ]
 
-    updated_points, unreachable_points = analyzer.filter_reachable_points(
-        path_points, all_points
-    )
+    # updated_points, unreachable_points = analyzer.filter_reachable_points(
+    #     path_points, all_points
+    # )
 
-    print(f"Number of reachable points: {len(updated_points)}")
-    print(f"Number of unreachable points: {len(unreachable_points)}")
+    # print(f"Number of reachable points: {len(updated_points)}")
+    # print(f"Number of unreachable points: {len(unreachable_points)}")
+
+    point = [0.1, 0.1, 0.1]
+    normal = [0, 0, -1]
+    target = [normal[0], normal[1], 0]
+
+    # new_norm = analyzer.adjust_orientation(point, normal, all_points, target)
+
+    # print(f"Original normal: {normal}")
+    # print(f"Adjusted normal: {new_norm}")
+    # print(f"Target normal: {target}")
+
+    filtered_points = filter_negative_nz_points(path_points)
+    # filtered_points = filter_negative_nz_points(updated_points)
+
+    for point, normal in filtered_points:
+        target = [normal[0], normal[1], 0]
+        if not analyzer.is_reachable(point, target, all_points):
+            poi, dir = analyzer.adjust_and_move_backwards(
+                point, normal, all_points, target
+            )
+
+            print(poi + dir)
+
+            # new_norm = analyzer.adjust_orientation_toward_target(
+            #     point, normal, all_points, target
+            # )
+            # print(f"Original normal: {normal}")
+            # print(f"Adjusted normal: {new_norm}")
+            # print(f"Target normal: {target}")
+            # print("")

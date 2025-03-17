@@ -48,16 +48,16 @@ def mesh_to_paths(
 
     for points, _, _ in clusters:
         for point in points:
-            # convert from y-up to z-up coordinate system
+            # convert from y-up, x-forward, z-right to z-up, x-forward, y-left
             point.coordinates = (
                 point.coordinates[0],
                 point.coordinates[2],
-                point.coordinates[1],
+                -point.coordinates[1],
             )
             point.normal = (
                 point.normal[0],
                 point.normal[2],
-                point.normal[1],
+                -point.normal[1],
             )
 
     # Compute the paths for each cluster
@@ -81,25 +81,59 @@ def mesh_to_paths(
         p = []
         for point in points:
             n = point.normal
-
-            # normal points outwards, we want our robot to point towards the point
-            normal = (-n[0], -n[1], -n[2])
-
-            # No rotation around x-axis
-            roll = 0
-            pitch = np.arctan2(normal[0], normal[2])
-            yaw = np.arcsin(-normal[1])
-
-            # Convert all that to a quaternion
-            quat = Rotation.from_euler(
-                "xyz", [roll, pitch, yaw], degrees=False
-            ).as_quat()
-
-            p.append((*point.coordinates, *quat))
+            p.append((*point.coordinates, *norm_to_quat(n)))
 
         rpaths.append((color, p))
 
     return rpaths
+
+
+def norm_to_quat(normal):
+    # the normal points "away" from the point, we want our robot to point towards it
+    normal = (-normal[0], -normal[1], -normal[2])
+
+    # normalize the normal, just to be sure
+    normal = normal / np.linalg.norm(normal)
+
+    # handle edge cases where the normal is parallel to the z-axis
+    if np.allclose(normal, [0, 0, 1]):
+        return (0, 5.06e-4, 0, 9.9e-1)
+    elif np.allclose(normal, [0, 0, -1]):
+        return (0, 9.9e-1, 0, 5.06e-4)
+
+    # the hand of the robot points towards the positive z-axis, so
+    # we want the rotation that aligns the z-axis with our normal
+
+    # find the rotation axis which is perpendicular to both the z-axis and the normal
+    # (i.e. the axis perpendicular to the plane they form)
+    rotation_axis = np.cross((0, 0, 1), normal)
+    rotation_axis = rotation_axis / np.linalg.norm(rotation_axis)
+
+    # find the rotation angle between the z-axis and the normal
+    # this is the angle to rotate around the rotation axis
+    # dot(a, b) = |a| * |b| * cos(angle) = cos(angle) because |a| = |b| = 1
+    cos_angle = np.dot([0, 0, 1], normal)
+    angle = np.arccos(np.clip(cos_angle, -1.0, 1.0))
+
+    # convert the rotation to a quaternion
+    r = Rotation.from_rotvec(angle * rotation_axis)
+    quat = r.as_quat()
+
+    # fail if the quat contains NaNs
+    if np.isnan(quat).any():
+        raise ValueError("Quaternion contains NaNs")
+
+    # if one of the 4 components of the quat is too close to +/- 1, there's a risk for it to mess up the IK
+    # so set these components to a value close to 1
+    close_to_pos_1 = np.isclose(quat, 1, atol=1e-3)
+    close_to_min_1 = np.isclose(quat, -1, atol=1e-3)
+    quat[close_to_pos_1] = 9.9e-1
+    quat[close_to_min_1] = -9.9e-1
+
+    # normalize the quaternion
+    quat = quat / np.linalg.norm(quat)
+
+    return quat
 
 
 if __name__ == "__main__":

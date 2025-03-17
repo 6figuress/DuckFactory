@@ -47,125 +47,58 @@ def is_horizontal_or_above(orientation: tuple[float, float, float]) -> bool:
     return nz >= 0
 
 
-# def get_exit_plane_oriented(mesh: Trimesh, orientation: tuple) -> tuple:
-#     """
-#     Determines the normal of the bounding box plane that will be exited when moving
-#     backward along the given orientation, considering an oriented bounding box.
+def get_normal_to_face(
+    mesh: Trimesh,
+    point1: tuple[float, float, float],
+    point2: tuple[float, float, float],
+) -> tuple[float, float, float]:
+    """
+    Computes the normal of the face of the Oriented Bounding Box (OBB) that contains both given points.
 
-#     Parameters:
-#         mesh (trimesh.Trimesh): The input mesh.
-#         orientation (tuple): A normal vector (nx, ny, nz) representing the direction.
+    Parameters:
+        mesh (trimesh.Trimesh): The input mesh.
+        point1 (tuple): The (x, y, z) coordinates of the first point.
+        point2 (tuple): The (x, y, z) coordinates of the second point.
 
-#     Returns:
-#         tuple: The normal vector of the bounding box plane that will be exited.
-#     """
-#     # Normalize the orientation vector
-#     nx, ny, nz = orientation
-#     norm = np.linalg.norm([nx, ny, nz])
-#     if norm == 0:
-#         raise ValueError("Orientation vector cannot be zero.")
+    Returns:
+        tuple: The normal vector (nx, ny, nz) of the face containing both points.
+    """
+    obb = mesh.bounding_box_oriented
 
-#     direction = np.array([nx, ny, nz]) / norm  # Unit direction vector
+    # Extract the transformation matrix of the OBB
+    obb_transform = obb.primitive.transform
 
-#     # Get the oriented bounding box
-#     obb = mesh.bounding_box_oriented
+    # The three face normals of the OBB (columns of rotation part of transform matrix)
+    face_normals = obb_transform[:3, :3].T
 
-#     # The bounding box corners (min and max)
-#     box_corners = obb.bounds  # Shape (2,3), min and max points
+    # Compute the line direction (unit vector)
+    line_direction = np.array(point2) - np.array(point1)
+    line_direction /= np.linalg.norm(line_direction)  # Normalize
 
-#     # Rotation matrix of the oriented bounding box
-#     rotation_matrix = obb.primitive.transform[:3, :3]  # Extract the 3x3 rotation matrix
+    # Find the plane normal that is most parallel to the line direction
+    best_normal = None
+    best_dot_product = 1
 
-#     # Define the six plane normals in local OBB space
-#     local_normals = np.array(
-#         [
-#             [-1, 0, 0],
-#             [1, 0, 0],  # X-min, X-max
-#             [0, -1, 0],
-#             [0, 1, 0],  # Y-min, Y-max
-#             [0, 0, -1],
-#             [0, 0, 1],  # Z-min, Z-max
-#         ]
-#     )
+    for normal in face_normals:
+        dot_product = np.abs(np.dot(normal, line_direction))  # Absolute dot product
+        if dot_product < best_dot_product:
+            best_dot_product = dot_product
+            best_normal = normal
 
-#     # Transform the normals into world space using the OBB rotation
-#     world_normals = local_normals @ rotation_matrix.T
+    # Ensure the normal points outward from the OBB
+    centroid_to_p1 = np.array(point1) - obb.centroid
+    if np.dot(centroid_to_p1, best_normal) < 0:
+        best_normal = -best_normal
 
-#     # Determine which face is exited
-#     max_exit_value = float("-inf")
-#     exit_plane = None
+    plane_normal = best_normal
 
-#     for normal in world_normals:
-#         # Check which face is most aligned with the movement (backward direction)
-#         if np.dot(-direction, normal) > 0:
-#             if np.dot(normal, box_corners[1]) > max_exit_value:
-#                 max_exit_value = np.dot(normal, box_corners[1])
-#                 exit_plane = tuple(normal)
-
-#     return exit_plane  # Returns the world-space normal of the exit plane
-
-
-# def plot_mesh_with_bounding_box(mesh):
-#     """
-#     Plots a given mesh along with its bounding box in a 3D matplotlib figure.
-
-#     Parameters:
-#         mesh (trimesh.Trimesh): The input 3D mesh.
-#     """
-#     fig = plt.figure()
-#     ax = fig.add_subplot(111, projection="3d")
-
-#     # Get the bounding box
-#     box = mesh.bounding_box_oriented  # Or use mesh.bounding_box for AABB
-
-#     # Plot the bounding box vertices
-#     ax.scatter(
-#         box.vertices[:, 0],
-#         box.vertices[:, 1],
-#         box.vertices[:, 2],
-#         c="red",
-#         label="Bounding Box",
-#     )
-
-#     # Plot the bounding box edges
-#     edges = [
-#         (0, 1),
-#         (1, 3),
-#         (3, 2),
-#         (2, 0),  # Bottom edges
-#         (4, 5),
-#         (5, 7),
-#         (7, 6),
-#         (6, 4),  # Top edges
-#         (0, 4),
-#         (1, 5),
-#         (2, 6),
-#         (3, 7),  # Vertical edges
-#     ]
-#     for edge in edges:
-#         points = box.vertices[list(edge)]
-#         ax.plot(points[:, 0], points[:, 1], points[:, 2], c="blue")
-
-#     # Plot the mesh faces
-#     for face in mesh.faces:
-#         coords = mesh.vertices[face]
-#         ax.add_collection3d(
-#             Poly3DCollection([coords], color="gray", alpha=0.3, edgecolor="black")
-#         )
-
-#     # Labels and view
-#     ax.set_xlabel("X")
-#     ax.set_ylabel("Y")
-#     ax.set_zlabel("Z")
-#     ax.legend()
-
-#     plt.show()
+    return plane_normal
 
 
 def ray_box_intersection(
     ray_origin: tuple[float, float, float],
     ray_direction: tuple[float, float, float],
-    box: Trimesh.primitives.Box,
+    box,
 ) -> tuple[float, float, float]:
     """
     Compute the intersection point of a ray with an oriented bounding box.
@@ -254,93 +187,6 @@ def get_intersection_with_obb(
     return exit_point
 
 
-def plot_intersection_with_obb(
-    mesh: Trimesh,
-    start_point: tuple[float, float, float],
-    normal_at_point: tuple[float, float, float],
-    exit_point: tuple[float, float, float],
-) -> None:
-    """
-    Plots the intersection of a backward ray with an oriented bounding box.
-
-    Parameters:
-        mesh (trimesh.Trimesh): The input mesh.
-        start_point (tuple): The (x, y, z) coordinates of the starting point.
-        normal_at_point (tuple): The (nx, ny, nz) normal at the starting point.
-        exit_point (tuple): The (x, y, z) coordinates of the intersection point.
-    """
-    # Create a 3D plot
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection="3d")
-
-    # Get OBB vertices
-    obb_vertices = mesh.bounding_box_oriented.vertices
-    ax.scatter(
-        obb_vertices[:, 0],
-        obb_vertices[:, 1],
-        obb_vertices[:, 2],
-        c="red",
-        label="OBB Vertices",
-    )
-
-    # Plot OBB edges
-    obb_faces = [
-        [obb_vertices[i] for i in face] for face in mesh.bounding_box_oriented.faces
-    ]
-    ax.add_collection3d(Poly3DCollection(obb_faces, alpha=0.3, edgecolor="black"))
-
-    # Plot start point
-    ax.scatter(
-        start_point[0],
-        start_point[1],
-        start_point[2],
-        c="green",
-        s=100,
-        label=f"Start Point {tuple(start_point)}",
-    )
-
-    # Plot exit point
-    ax.scatter(
-        exit_point[0],
-        exit_point[1],
-        exit_point[2],
-        c="blue",
-        s=100,
-        label=f"Exit Point {tuple(exit_point)}",
-    )
-
-    # Plot movement direction (backward along normal)
-    ax.quiver(
-        start_point[0],
-        start_point[1],
-        start_point[2],
-        normal_at_point[0],
-        normal_at_point[1],
-        normal_at_point[2],
-        color="orange",
-        length=1.5,
-        normalize=True,
-        label="Backward Direction",
-    )
-
-    num_faces = min(1000, len(mesh.faces))
-    random_indices = np.random.choice(len(mesh.faces), num_faces, replace=False)
-    subset_faces = mesh.faces[random_indices]
-    for face in subset_faces:
-        coords = mesh.vertices[face]
-        ax.add_collection3d(
-            Poly3DCollection([coords], color="gray", alpha=0.3, edgecolor="black")
-        )
-
-    # Labels and legend
-    ax.set_xlabel("X")
-    ax.set_ylabel("Y")
-    ax.set_zlabel("Z")
-    ax.legend()
-
-    plt.show()
-
-
 def generate_path_on_box(
     start: tuple[float, float, float],
     end: tuple[float, float, float],
@@ -356,7 +202,7 @@ def generate_path_on_box(
         box: A trimesh Trimesh object representing the oriented bounding box.
 
     Returns:
-        List of tuples representing the path along the edges of the box.
+        List of tuples ((x, y, z), (nx, ny, nz)), where each entry contains a point and its normal.
     """
     # Get the 8 corner vertices of the box
     vertices = np.array(box.vertices)
@@ -394,7 +240,22 @@ def generate_path_on_box(
                 + [tuple(map(float, vertices[i])) for i in path]
                 + [tuple(map(float, end))]
             )
-            return result_path
+
+            # Compute normals for each point transition
+            path_with_normals = []
+            previous_normal = None
+
+            for i in range(len(result_path) - 1):
+                point1, point2 = result_path[i], result_path[i + 1]
+                normal = tuple(get_normal_to_face(box, point1, point2))
+
+                path_with_normals.append((point1, normal))
+                previous_normal = normal
+
+            # Add the last point with the last computed normal
+            path_with_normals.append((result_path[-1], previous_normal))
+
+            return path_with_normals
 
         if current in visited:
             continue
@@ -404,7 +265,8 @@ def generate_path_on_box(
             if neighbor not in visited:
                 queue.append((neighbor, path + [neighbor]))
 
-    return [start, end]
+    normal = get_normal_to_face(box, start, end)
+    return [(start, normal), (end, normal)]
 
 
 def plot_path_on_box(
@@ -425,7 +287,7 @@ def plot_path_on_box(
         normal1 (tuple): The (nx, ny, nz) normal at the first starting point.
         start_point2 (tuple): The (x, y, z) coordinates of the second starting point.
         normal2 (tuple): The (nx, ny, nz) normal at the second starting point.
-        paths (list): A list of (x, y, z) coordinates representing the path.
+        paths (list): A list of ((x, y, z), (nx, ny, nz)) containing path positions and their normals.
         restricted_face (list): A list of indices of restricted
     """
     fig = plt.figure()
@@ -499,16 +361,30 @@ def plot_path_on_box(
     )
 
     # Plot paths
-    paths = np.array(paths)
+    path_positions = np.array([pos for pos, _ in paths])
     ax.plot(
-        paths[:, 0],
-        paths[:, 1],
-        paths[:, 2],
+        path_positions[:, 0],
+        path_positions[:, 1],
+        path_positions[:, 2],
         marker="o",
         linestyle="-",
         color="green",
         label="Path",
     )
+
+    # Plot normals along the path
+    for pos, normal in paths:
+        ax.quiver(
+            pos[0],
+            pos[1],
+            pos[2],
+            normal[0],
+            normal[1],
+            normal[2],
+            color="cyan",
+            length=0.5,
+            normalize=True,
+        )
 
     num_faces = min(1000, len(mesh.faces))
     random_indices = np.random.choice(len(mesh.faces), num_faces, replace=False)
@@ -527,61 +403,24 @@ def plot_path_on_box(
 
 
 mesh = load_mesh("DuckComplete.obj")
-# plot_mesh_with_bounding_box(mesh)
-# min_values, max_values = get_bounding_points(mesh)
-# print(f"Min values: {min_values}")
-# print(f"Max values: {max_values}")
 
-# actual point and orientation from the duck
 point = [0.0321, 0.0268, 0.04844]
 orientation = (0.3356, 0.0207, 0.9417)
 
 point_2 = [0.0276, 0.11949, -0.0129]
 orientation_2 = (-0.42780, 0.84981, -0.307881)
 
-# ---------------------------------
-# on the same face
-# point = [0.0, 0.0, 0.0]
-# orientation = (1.0, 0.0, 0.0)
-
-# point_2 = [0.0, 0.1, 0.0]
-# orientation_2 = (1.0, 0.0, 0.0)
-
-# # ---------------------------------
-# # on opposite faces
-# point = [0.0, 0.0, 0.0]
-# orientation = (1.0, 0.0, 0.0)
-
-# point_2 = [0.0, 0.1, 0.0]
-# orientation_2 = (-1.0, 0.0, 0.0)
-
-# # ---------------------------------
-# # bottom
-# point = [0.0, 0.0, 0.0]
-# orientation = (0.0, 1.0, 0.0)
-
-# point_2 = [0.0, 0.1, 0.0]
-# orientation_2 = (0.0, -1.0, 0.0)
-
-
 exit_point = get_intersection_with_obb(mesh, point, orientation)
 exit_point_2 = get_intersection_with_obb(mesh, point_2, orientation_2)
-
-# exit_point = [-0.1, -0.1, -0.1]
-# exit_point_2 = [0.1, 0.1, 0.1]
-print(f"Exit point: {exit_point}")
-print(f"Exit point 2: {exit_point_2}")
-# plot_intersection_with_obb(mesh, [0, 0, 0], orientation, exit_point)
-# plot_intersection_with_obb(mesh, [0, 0, 0], orientation_2, exit_point_2)
-
 
 restricted_face = [3, 8]
 
 path = generate_path_on_box(
     exit_point, exit_point_2, mesh.bounding_box_oriented, restricted_face
 )
-print(f"Path points: {path}")
 
+for i, (pos, normal) in enumerate(path):
+    print(f"Point {i + 1}: {pos} with normal {normal}")
 
 plot_path_on_box(
     mesh, point, orientation, point_2, orientation_2, path, restricted_face

@@ -109,59 +109,67 @@ class PathAnalyzer:
         Returns:
             bool: True if the point is reachable, False otherwise.
         """
-        return not any(
-            self.is_point_inside_pen(model_point, point, normal)
-            for model_point in model_points
+        return not self.are_points_inside_pen(
+            np.array(model_points),
+            point,
+            normal,
         )
 
-    def is_point_inside_pen(
+    def are_points_inside_pen(
         self,
-        point: tuple[float, float, float],
+        points: np.ndarray[tuple[float, float, float]],
         p0: tuple[float, float, float],
         normal: tuple[float, float, float],
     ) -> bool:
         """
-        Check if a 3D point is inside a structure consisting of a cone followed by a tube, representing the pen.
+        Check if a list of 3D points are inside a structure consisting of a cone followed by a tube, representing the pen.
 
         Parameters:
-            point (tuple): The (x, y, z) coordinates of the point.
-            p0 (tuple): The (x, y, z) coordinates of the cone tip (start of structure).
-            normal (tuple): The (dx, dy, dz) normal vector defining the axis direction.
+            points: NumPy array containing the (x, y, z) coordinates of the points.
+            p0: The (x, y, z) coordinates of the cone tip (start of structure).
+            normal: The (dx, dy, dz) normal vector defining the axis direction.
 
         Returns:
-            bool: True if the point is inside the tube or the cone, False otherwise.
+            bool: True if any of the points are inside the tube or the cone, False otherwise.
         """
-        p = np.array(point)
-        a = np.array(p0)
-        n = np.array(normal)
+        points = np.array(points)
+        tip = np.array(p0)
+        norm = np.array(normal) / np.linalg.norm(normal)  # Normalize
 
-        # Exclude the point p0 explicitly
-        if np.all(p == a):
+        # Exclude the cone tip explicitly
+        not_cone_tip = ~np.all(points == tip, axis=1)
+
+        # Early retunr if all points are cone tip
+        if not np.any(not_cone_tip):
             return False
 
-        # Normalize the normal direction
-        n = n / np.linalg.norm(n)
-        # Compute the projection of (p - a) onto the normal (height along axis)
-        projection_length = np.dot(p - a, n)
+        # Filter out cone tip points
+        points = points[not_cone_tip]
+
+        # Calculate projections
+        vecs_to_a = points - tip
+        projection = np.dot(vecs_to_a, norm)
+
+        # FIlter points by projection range
+        mask_cone = (0 <= projection) & (projection <= self.cone_height)
+        mask_tube = (self.cone_height < projection) & (projection <= self.tube_length)
+
+        # Calculate distances from axis
+        closest_points = tip + np.outer(projection, norm)
+        distances = np.linalg.norm(points - closest_points, axis=1)
+
+        # Check if points are inside the cone or tube
         radius = self.diameter / 2
-        # Compute the closest point on the axis (for both tube and cone)
-        closest_point = a + projection_length * n
-        # Compute perpendicular distance from the axis
-        distance_from_axis = np.linalg.norm(p - closest_point)
+        result_cone = np.zeros_like(projection, dtype=bool)
+        if np.any(mask_cone):
+            max_radius = radius * (projection[mask_cone] / self.cone_height)
+            result_cone[mask_cone] = distances[mask_cone] <= max_radius
 
-        # Check if point is inside the cone
-        if 0 <= projection_length <= self.cone_height:
-            max_radius = radius * (projection_length / self.cone_height)
-            if distance_from_axis <= max_radius:
-                return True
+        result_tube = np.zeros_like(projection, dtype=bool)
+        if np.any(mask_tube):
+            result_tube[mask_tube] = distances[mask_tube] <= radius
 
-        # Check if point is inside the tube
-        projection_length_tube = projection_length - self.cone_height
-        if 0 <= projection_length_tube <= self.tube_length:
-            if distance_from_axis <= radius:
-                return True
-
-        return False  # Not inside the tube or cone
+        return np.any(result_cone | result_tube)
 
     def adjust_orientation_toward_target(
         self,

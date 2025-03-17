@@ -12,7 +12,15 @@ from collections import deque
 
 
 def get_bounding_points(mesh: Trimesh) -> Trimesh:
-    """Get the bounding points of a mesh."""
+    """
+    Get the bounding points of a mesh.
+
+    Parameters:
+        mesh (trimesh.Trimesh): The input mesh.
+
+    Returns:
+        tuple: A tuple containing the minimum and maximum values of the bounding box.
+    """
     box = mesh.bounding_box_oriented
 
     # Get the vertices of the bounding box
@@ -25,7 +33,7 @@ def get_bounding_points(mesh: Trimesh) -> Trimesh:
     return min_values, max_values
 
 
-def is_horizontal_or_above(orientation):
+def is_horizontal_or_above(orientation: tuple[float, float, float]) -> bool:
     """
     Determines if a given normal orientation is horizontal or above.
 
@@ -35,7 +43,7 @@ def is_horizontal_or_above(orientation):
     Returns:
         bool: True if the normal is horizontal or above, False if it is pointing downward.
     """
-    nx, ny, nz = orientation
+    _, _, nz = orientation
     return nz >= 0
 
 
@@ -154,17 +162,21 @@ def is_horizontal_or_above(orientation):
 #     plt.show()
 
 
-def ray_box_intersection(ray_origin, ray_direction, box):
+def ray_box_intersection(
+    ray_origin: tuple[float, float, float],
+    ray_direction: tuple[float, float, float],
+    box: Trimesh.primitives.Box,
+) -> tuple[float, float, float]:
     """
     Compute the intersection point of a ray with an oriented bounding box.
 
     Parameters:
-        ray_origin (np.ndarray): The (x, y, z) origin of the ray.
-        ray_direction (np.ndarray): The normalized (dx, dy, dz) direction of the ray.
+        ray_origin (tuple): The (x, y, z) origin of the ray.
+        ray_direction (tuple): The normalized (dx, dy, dz) direction of the ray.
         box (trimesh.primitives.Box): The oriented bounding box.
 
     Returns:
-        np.ndarray or None: The (x, y, z) coordinates of the intersection point or None if no intersection.
+        tuple or None: The (x, y, z) coordinates of the intersection point or None if no intersection.
     """
     # Extract box transform and half extent
     box_transform = box.primitive.transform
@@ -197,19 +209,27 @@ def ray_box_intersection(ray_origin, ray_direction, box):
     return intersection_world
 
 
-def get_intersection_with_obb(mesh, point, orientation, precision=3):
+def get_intersection_with_obb(
+    mesh: Trimesh,
+    point: tuple[float, float, float],
+    orientation: tuple[float, float, float],
+    precision: int = 3,
+) -> tuple[float, float, float]:
     """
-    Given a point on the mesh and an orientation, move backward along the normal
-    and find the intersection with the oriented bounding box.
+    Compute the intersection point of a backward ray with an oriented bounding box.
 
     Parameters:
-        mesh (trimesh.Trimesh): The input 3D mesh.
-        point (np.ndarray): The (x, y, z) coordinates of the starting point.
-        orientation (np.ndarray): The (nx, ny, nz) normal at the starting point.
+        mesh (trimesh.Trimesh): The input mesh.
+        point (tuple): The (x, y, z) coordinates of the starting point.
+        orientation (tuple): The (nx, ny, nz) normal at the starting point.
         precision (int): Decimal places to round the coordinates.
 
     Returns:
-        np.ndarray: The (x, y, z) coordinates of the intersection point with the OBB.
+        tuple: The (x, y, z) coordinates of the intersection point.
+
+    Raises:
+        ValueError: If the orientation vector is zero.
+        RuntimeError: If no intersection is found between the backward direction and the bounding box.
     """
     # Normalize the orientation vector
     direction = np.array(orientation)
@@ -236,18 +256,18 @@ def get_intersection_with_obb(mesh, point, orientation, precision=3):
 
 def plot_intersection_with_obb(
     mesh: Trimesh,
-    start_point: np.ndarray,
-    normal_at_point: np.ndarray,
-    exit_point: np.ndarray,
+    start_point: tuple[float, float, float],
+    normal_at_point: tuple[float, float, float],
+    exit_point: tuple[float, float, float],
 ) -> None:
     """
     Plots the intersection of a backward ray with an oriented bounding box.
 
     Parameters:
         mesh (trimesh.Trimesh): The input mesh.
-        start_point (np.ndarray): The (x, y, z) coordinates of the starting point.
-        normal_at_point (np.ndarray): The (nx, ny, nz) normal at the starting point.
-        precision (int): Decimal places to round the coordinates.
+        start_point (tuple): The (x, y, z) coordinates of the starting point.
+        normal_at_point (tuple): The (nx, ny, nz) normal at the starting point.
+        exit_point (tuple): The (x, y, z) coordinates of the intersection point.
     """
     # Create a 3D plot
     fig = plt.figure()
@@ -388,18 +408,25 @@ def generate_path_on_box(
 
 
 def plot_path_on_box(
-    mesh, start_point1, normal1, start_point2, normal2, paths, restricted_face=None
-):
+    mesh: Trimesh,
+    start_point1: tuple[float, float, float],
+    normal1: tuple[float, float, float],
+    start_point2: tuple[float, float, float],
+    normal2: tuple[float, float, float],
+    paths: list,
+    restricted_face: list[int] = None,
+) -> None:
     """
     Plots the generated paths on an oriented bounding box.
 
     Parameters:
         mesh (trimesh.Trimesh): The input mesh.
-        start_point1 (np.ndarray): First start point.
-        normal1 (np.ndarray): First normal.
-        start_point2 (np.ndarray): Second start point.
-        normal2 (np.ndarray): Second normal.
-        paths (list of list of np.ndarray): List of paths to be plotted.
+        start_point1 (tuple): The (x, y, z) coordinates of the first starting point.
+        normal1 (tuple): The (nx, ny, nz) normal at the first starting point.
+        start_point2 (tuple): The (x, y, z) coordinates of the second starting point.
+        normal2 (tuple): The (nx, ny, nz) normal at the second starting point.
+        paths (list): A list of (x, y, z) coordinates representing the path.
+        restricted_face (list): A list of indices of restricted
     """
     fig = plt.figure()
     ax = fig.add_subplot(111, projection="3d")

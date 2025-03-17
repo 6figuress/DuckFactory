@@ -142,6 +142,39 @@ def ray_box_intersection(
     return intersection_world
 
 
+def ray_plane_intersection(
+    ray_origin: tuple[float, float, float],
+    ray_direction: tuple[float, float, float],
+    plane_point: tuple[float, float, float],
+    plane_normal: tuple[float, float, float],
+) -> tuple[float, float, float] | None:
+    """
+    Compute the intersection of a ray with an infinite plane.
+
+    Parameters:
+        ray_origin (tuple): The (x, y, z) origin of the ray.
+        ray_direction (tuple): The normalized (dx, dy, dz) direction of the ray.
+        plane_point (tuple): A point on the plane.
+        plane_normal (tuple): The normal vector of the plane.
+
+    Returns:
+        tuple or None: The (x, y, z) coordinates of the intersection point or None if no intersection
+    """
+    ray_origin = np.array(ray_origin)
+    ray_direction = np.array(ray_direction) / np.linalg.norm(ray_direction)
+    plane_point = np.array(plane_point)
+    plane_normal = np.array(plane_normal) / np.linalg.norm(plane_normal)
+
+    denom = np.dot(ray_direction, plane_normal)
+    if abs(denom) < 1e-6:
+        return None  # Ray is parallel to the plane
+
+    d = np.dot(plane_normal, plane_point - ray_origin) / denom
+    intersection = ray_origin + d * ray_direction
+
+    return intersection if d >= 0 else None  # Only forward intersections
+
+
 def get_intersection_with_obb(
     mesh: Trimesh,
     point: tuple[float, float, float],
@@ -159,16 +192,12 @@ def get_intersection_with_obb(
 
     Returns:
         tuple: The (x, y, z) coordinates of the intersection point.
-
-    Raises:
-        ValueError: If the orientation vector is zero.
-        RuntimeError: If no intersection is found between the backward direction and the bounding box.
     """
     # Normalize the orientation vector
     direction = np.array(orientation)
     norm = np.linalg.norm(direction)
     if norm == 0:
-        raise ValueError("Orientation vector cannot be zero.")
+        raise point
 
     direction = -direction / norm  # Reverse direction for backward movement
 
@@ -179,12 +208,21 @@ def get_intersection_with_obb(
     exit_point = ray_box_intersection(np.array(point), direction, obb)
 
     if exit_point is None:
-        raise RuntimeError(
-            "No intersection found between the backward direction and the bounding box."
-        )
+        # Try intersecting with the extended faces of the OBB
+        for face_normal, face_vertex in zip(
+            obb.face_normals, obb.vertices, strict=False
+        ):
+            plane_intersection = ray_plane_intersection(
+                point, direction, face_vertex, face_normal
+            )
+            if plane_intersection is not None:
+                exit_point = plane_intersection
+                break  # Stop at the first valid intersection
 
-    exit_point = np.round(exit_point, precision)
-    return exit_point
+    if exit_point is None:
+        exit_point = np.array(point)  # If all else fails, return the original point
+
+    return np.round(exit_point, precision)
 
 
 def generate_path_on_box(
@@ -402,6 +440,140 @@ def plot_path_on_box(
     plt.show()
 
 
+def compute_path_with_orientation(
+    mesh: Trimesh,
+    start_point: tuple[float, float, float],
+    start_normal: tuple[float, float, float],
+    end_point: tuple[float, float, float],
+    end_normal: tuple[float, float, float],
+    analyzer: PathAnalyzer,
+    model_points: list[tuple[float, float, float]],
+    nz_threshold: float = 0.0,
+    step_size: float = 0.05,
+    restricted_faces: list[int] = None,
+) -> list[tuple[tuple[float, float, float], tuple[float, float, float]]]:
+    """
+    Compute a path with orientations from a start position to an end position, ensuring normals are adjusted if needed.
+
+    Parameters:
+        mesh (Trimesh): The input mesh.
+        start_point (tuple): The (x, y, z) coordinates of the start position.
+        start_normal (tuple): The normal (nx, ny, nz) at the start position.
+        end_point (tuple): The (x, y, z) coordinates of the end position.
+        end_normal (tuple): The normal (nx, ny, nz) at the end position.
+        analyzer (PathAnalyzer): The reachability analyzer.
+        model_points (list): A list of model points to check for collisions.
+        nz_threshold (float): The threshold below which normals should be adjusted.
+        step_size (float): The step size for adjusting orientation.
+        restricted_faces (list): List of restricted face indices on the OBB.
+
+    Returns:
+        list: A list of (position, normal) tuples representing the path.
+    """
+
+    # Adjust normals if below threshold and compute intersection points
+    def process_point(
+        point: tuple[float, float, float], normal: tuple[float, float, float]
+    ) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
+        """
+        Process a point and its normal, adjusting the normal if needed and computing the intersection point.
+
+        Parameters:
+            point (tuple): The (x, y, z) coordinates of the point.
+            normal (tuple): The normal (nx, ny, nz) at the point.
+
+        Returns:
+            tuple: A tuple containing the intersection point and the adjusted normal.
+        """
+        if normal[2] < nz_threshold:
+            target_normal = (normal[0], normal[1], 0)
+            adjusted_positions, adjusted_normals = analyzer.adjust_and_move_backwards(
+                point, normal, model_points, target_normal, step_size
+            )
+            final_point = get_intersection_with_obb(
+                mesh, adjusted_positions[-1], adjusted_normals[-1]
+            )
+            return final_point, adjusted_normals[-1]
+        else:
+            return get_intersection_with_obb(mesh, point, normal), normal
+
+    # Process start and end points
+    start_exit, start_normal = process_point(start_point, start_normal)
+    end_exit, end_normal = process_point(end_point, end_normal)
+
+    # Generate path along the OBB
+    path = generate_path_on_box(
+        start_exit, end_exit, mesh.bounding_box_oriented, restricted_faces
+    )
+
+    # Add start and end points with their normals
+    path.insert(0, (start_point, start_normal))
+    path.append((end_point, end_normal))
+
+    return path
+
+
+from duck_factory.pointsToPaths import PathFinder
+from duck_factory.point_sampling import (
+    sample_mesh_points,
+    cluster_points,
+    Point,
+    Color,
+)
+
+
+BASE_COLOR = (255, 255, 0, 255)
+COLORS = [
+    BASE_COLOR,  # Yellow
+    (0, 0, 0, 255),  # Black
+    (0, 0, 255, 255),  # Blue
+    (0, 255, 0, 255),  # Green
+    (0, 255, 255, 255),  # Cyan
+    (255, 0, 0, 255),  # Red
+    (255, 255, 255, 255),  # White
+]
+
+
+def mesh_to_paths(mesh: Trimesh, n_samples: int = 50_000, max_dist: float = 0.1):
+    """
+    Convert a mesh to a list of paths by sampling points and clustering them.
+
+    Parameters:
+        mesh (Trimesh): The mesh to convert to paths.
+        n_samples (int): The number of points to sample.
+        max_dist (float): The maximum distance between points to consider them connected.
+
+    Returns:
+        list[Path]: A list of paths with colors and points
+        list[Point]: A list of all sampled points
+    """
+    sampled_points = sample_mesh_points(
+        mesh, base_color=BASE_COLOR, colors=COLORS, n_samples=n_samples
+    )
+
+    clusters = cluster_points(sampled_points)
+
+    all_points = [point for cluster in clusters for point in cluster[0]]
+    paths = []
+    for points, color, is_noise in clusters:
+        if not is_noise:
+            path_finder = PathFinder(points, max_dist)
+            found_paths = path_finder.find_paths()
+            formatted_paths = [
+                (
+                    point.coordinates[0],
+                    point.coordinates[1],
+                    point.coordinates[2],
+                    point.normal,
+                )
+                for path in found_paths
+                for point in path
+            ]
+            paths.append((color, formatted_paths))
+
+    return paths, all_points
+
+
 mesh = load_mesh("DuckComplete.obj")
 
 point = [0.0321, 0.0268, 0.04844]
@@ -410,18 +582,110 @@ orientation = (0.3356, 0.0207, 0.9417)
 point_2 = [0.0276, 0.11949, -0.0129]
 orientation_2 = (-0.42780, 0.84981, -0.307881)
 
-exit_point = get_intersection_with_obb(mesh, point, orientation)
-exit_point_2 = get_intersection_with_obb(mesh, point_2, orientation_2)
+# exit_point = get_intersection_with_obb(mesh, point, orientation)
+# exit_point_2 = get_intersection_with_obb(mesh, point_2, orientation_2)
 
 restricted_face = [3, 8]
 
-path = generate_path_on_box(
-    exit_point, exit_point_2, mesh.bounding_box_oriented, restricted_face
+# path = generate_path_on_box(
+#     exit_point, exit_point_2, mesh.bounding_box_oriented, restricted_face
+# )
+
+# for i, (pos, normal) in enumerate(path):
+#     print(f"Point {i + 1}: {pos} with normal {normal}")
+
+# plot_path_on_box(
+#     mesh, point, orientation, point_2, orientation_2, path, restricted_face
+# )
+
+
+paths, all_points = mesh_to_paths(mesh)
+all_points = [pt.coordinates for pt in all_points]
+
+analyzer = PathAnalyzer(
+    tube_length=5e1, diameter=2e-2, cone_height=1e-2, step_angle=10, num_vectors=24
+)
+model_points = all_points
+nz_threshold = 0.0
+step_size = 0.05
+
+path_with_orientation = compute_path_with_orientation(
+    mesh,
+    point,
+    orientation,
+    point_2,
+    orientation_2,
+    analyzer,
+    model_points,
+    nz_threshold,
+    step_size,
+    restricted_face,
 )
 
-for i, (pos, normal) in enumerate(path):
-    print(f"Point {i + 1}: {pos} with normal {normal}")
+print(path_with_orientation)
 
-plot_path_on_box(
-    mesh, point, orientation, point_2, orientation_2, path, restricted_face
-)
+
+def plot_path(
+    mesh: Trimesh,
+    path: list[tuple[tuple[float, float, float], tuple[float, float, float]]],
+):
+    """
+    Plots the computed path on the mesh.
+
+    Parameters:
+        mesh (Trimesh): The input mesh.
+        path (list): A list of (position, normal) tuples representing the path.
+    """
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection="3d")
+
+    # Plot mesh bounding box
+    obb_vertices = mesh.bounding_box_oriented.vertices
+    ax.scatter(
+        obb_vertices[:, 0],
+        obb_vertices[:, 1],
+        obb_vertices[:, 2],
+        c="red",
+        label="OBB Vertices",
+    )
+
+    obb_faces = [
+        [obb_vertices[i] for i in face] for face in mesh.bounding_box_oriented.faces
+    ]
+    for face in obb_faces:
+        ax.add_collection3d(Poly3DCollection([face], alpha=0.3, edgecolor="black"))
+
+    # Plot path
+    path_positions = [pos for pos, _ in path]
+    path_positions = list(map(list, zip(*path_positions, strict=False)))
+    ax.plot(
+        path_positions[0],
+        path_positions[1],
+        path_positions[2],
+        marker="o",
+        linestyle="-",
+        color="green",
+        label="Path",
+    )
+
+    # Plot normals
+    for pos, normal in path:
+        ax.quiver(
+            pos[0],
+            pos[1],
+            pos[2],
+            normal[0],
+            normal[1],
+            normal[2],
+            color="blue",
+            length=0.05,
+        )
+
+    ax.set_xlabel("X")
+    ax.set_ylabel("Y")
+    ax.set_zlabel("Z")
+    ax.legend()
+    plt.show()
+
+
+plot_path(mesh, path_with_orientation)

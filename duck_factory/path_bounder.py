@@ -16,7 +16,7 @@ class PathBounder:
 
     def __init__(
         self,
-        mesh_path: str,
+        mesh: Trimesh,
         analyzer: PathAnalyzer = None,
         model_points: Positions = None,
         nz_threshold: float = 0.0,
@@ -27,16 +27,15 @@ class PathBounder:
         Initialize the PathBounder object.
 
         Parameters:
-            mesh_path (str): The path to the mesh file to use for the bounding box
+            mesh (Trimesh): The mesh to use for generating the path
             analyzer (PathAnalyzer): The PathAnalyzer object to use for adjusting normals
             model_points (list[tuple[float, float, float]]): The list of model points to use for adjusting normals
             nz_threshold (float): The threshold for the z component of the normal to trigger adjustment
             step_size (float): The step size for the adjustment
             precision (precision): The precision for rounding the intersection points
         """
-        self.mesh = load_mesh(mesh_path)
-        # self.box = self.mesh.bounding_box_oriented
-        self.box = self.mesh.bounding_box
+        # self.box = mesh.bounding_box_oriented
+        self.box = mesh.bounding_box
         self.analyzer = analyzer
         self.model_points = model_points
         self.nz_threshold = nz_threshold
@@ -254,13 +253,16 @@ class PathBounder:
         end_idx = np.argmin(cdist([end], vertices))
 
         # BFS to find shortest path
-        queue = deque([(start_idx, [start_idx])])
+        queue = deque([(start_idx, [])])
         visited = set([start_idx])
 
         while queue:
             current, path = queue.popleft()
             if current == end_idx:
                 result_path = [tuple(vertices[i]) for i in path]
+
+                if len(result_path) < 2:
+                    return []  # No intermediate points found
 
                 # Compute normals for each segment
                 path_with_normals = []
@@ -269,10 +271,6 @@ class PathBounder:
                         self.get_normal_to_face(result_path[i], result_path[i + 1])
                     )
                     path_with_normals.append((result_path[i], normal))
-
-                path_with_normals.append(
-                    (result_path[-1], normal)
-                )  # Last point with last normal
                 return path_with_normals
 
             for neighbor in adjacency[current]:
@@ -280,9 +278,7 @@ class PathBounder:
                     visited.add(neighbor)
                     queue.append((neighbor, path + [neighbor]))
 
-        # If no path is found, return start and end with normal
-        normal = self.get_normal_to_face(start, end)
-        return [(start, normal), (end, normal)]
+        return []
 
     def compute_path_with_orientation(
         self,
@@ -357,6 +353,9 @@ class PathBounder:
         start_exit, _ = start_adjusted_path[-1]
         end_exit, _ = end_adjusted_path[0]
 
+        print(f"Start exit: {start_exit}")
+        print(f"End exit: {end_exit}")
+
         path = self.generate_path_on_box(
             start_exit, end_exit, restricted_face=restricted_face
         )
@@ -367,7 +366,30 @@ class PathBounder:
 
         return final_path
 
+    def merge_path(
+        self, path1: Path, path2: Path, restricted_face: list[int] = None
+    ) -> Path:
+        """
+        Merge two paths together. And generating a new path between the end of path1 and the start of path2.
 
+        Parameters:
+            path1 (list[tuple[tuple[float, float, float], tuple[float, float, float, float]]]): The first path
+            path2 (list[tuple[tuple[float, float, float], tuple[float, float, float, float]]]): The second path
+            restricted_face (list[int]): The list of face indices to exclude from the path
+
+        Returns:
+            list[tuple[tuple[float, float, float], tuple[float, float, float, float]]]: The merged path
+        """
+        intermediate_path = self.compute_path_with_orientation(
+            start=path1[-1],
+            end=path2[0],
+            restricted_face=restricted_face,
+        )
+
+        return path1 + intermediate_path + path2
+
+
+# -------------------------------------- Plotting -------------------------------------- #
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
@@ -376,7 +398,7 @@ def plot_path(
     mesh: Trimesh,
     path: list[tuple[tuple[float, float, float], tuple[float, float, float]]],
     restricted_face: list[int] = None,
-):
+) -> None:
     """
     Plots the computed path on the mesh.
 
@@ -462,21 +484,19 @@ def plot_path(
 
 from trimesh.sample import sample_surface
 
-
 if __name__ == "__main__":
     analyzer = PathAnalyzer(
         tube_length=5e1, diameter=2e-2, cone_height=1e-2, step_angle=10, num_vectors=24
     )
+    mesh = load_mesh("DuckComplete.obj")
 
-    sampled_points = sample_surface(
-        load_mesh("DuckComplete.obj"), 5_000, sample_color=False
-    )
+    sampled_points = sample_surface(mesh, 5_000, sample_color=False)
 
     all_points = sampled_points[0]
 
     path_finder = PathBounder(
-        "DuckComplete.obj",
-        analyzer,
+        mesh=mesh,
+        analyzer=analyzer,
         model_points=all_points,
     )
 
@@ -488,12 +508,30 @@ if __name__ == "__main__":
     restricted_face = [3, 8]
 
     path_with_orientation = path_finder.compute_path_with_orientation(
-        (start_point, start_normal),
-        (end_point, end_normal),
+        start=(start_point, start_normal),
+        end=(end_point, end_normal),
         restricted_face=restricted_face,
     )
 
     print(f"Computed path with {len(path_with_orientation)} points")
     print(path_with_orientation)
 
-    plot_path(path_finder.mesh, path_with_orientation, restricted_face=restricted_face)
+    plot_path(mesh, path_with_orientation, restricted_face=restricted_face)
+
+    #  Generate two paths example values
+    path1 = [
+        ([0.0321, 0.0268, 0.04844], (0.3356, 0.0207, 0.9417)),
+        ([0.04, 0.0368, 0.04844], (0.456, 0.0207, 0.2417)),
+        ([0.0321, 0.0268, 0.1844], (0.3356, 0.4207, 0.7417)),
+    ]
+
+    path2 = [
+        ([0.32, 0.048, 0.05], (0.6, 0.01, 0.03)),
+        ([0.5, 0.06, 0.1], (0.01, 0.1, 0.054)),
+        ([0.6, 0.08, 0.2], (0.1, 0.1, 0.04)),
+    ]
+
+    merged_path = path_finder.merge_path(path1, path2, restricted_face=restricted_face)
+
+    print(f"Merged path with {len(merged_path)} points")
+    print(merged_path)

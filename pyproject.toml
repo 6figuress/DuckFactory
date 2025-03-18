@@ -11,6 +11,7 @@ dependencies = [
     "opencv-python>=4.11.0.86",
     "pillow>=11.1.0",
     "pytest>=8.3.4",
+    "pytest-cov>=6.0.0",
     "raylib>=5.5.0.2",
     "ruff>=0.9.7",
     "scikit-learn>=1.6.1",
@@ -49,4 +50,4 @@ unfixable = [
 convention = "google" 
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["D"]  # Disable all docstring checks in tests/
+"tests/**/*.py" = ["D", "ANN"]  # Disable all docstring and type annotation checks in tests/

@@ -1,3 +1,6 @@
+[![codecov](https://codecov.io/gh/6figuress/DuckFactory/graph/badge.svg?token=23COG54BQU)](https://codecov.io/gh/6figuress/DuckFactory)
+![GitHub branch status](https://img.shields.io/github/checks-status/6figuress/DuckFactory/main)
+
 # Enviroment setup
 
 ## uv

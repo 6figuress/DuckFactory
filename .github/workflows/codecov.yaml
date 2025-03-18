@@ -1,0 +1,37 @@
+name: Codecov
+on: [push, pull_request]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    name: Test and coverage
+    steps:
+    - name: Checkout the repository
+      uses: actions/checkout@main
+      
+    - name: Install the latest version of uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        enable-cache: true
+        
+    - name: Run tests
+      run: uv run --frozen pytest --cov --junitxml=junit.xml -o junit_family=legacy
+      
+    - name: Upload test results to Codecov
+      uses: codecov/test-results-action@v1
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+      if: always() 
+        
+    - name: Run coverage
+      run: uv run --frozen pytest --cov --cov-report=xml
+      if: always() 
+      
+    - name: Upload coverage reports to Codecov
+      uses: codecov/codecov-action@v5
+      env:
+        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      if: always() 
+        
+    - name: Tests failed! Check other steps for details.
+      run: exit 1
+      if: failure()

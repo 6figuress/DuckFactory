@@ -3,7 +3,7 @@ import numpy as np
 import networkx as nx
 from duck_factory.point_sampling import SampledPoint
 
-from duck_factory.pointsToPaths import PathFinder
+from duck_factory.points_to_paths import PathFinder
 
 
 @pytest.fixture

@@ -3,8 +3,8 @@ from trimesh import Trimesh, load_mesh
 from trimesh.sample import sample_surface
 from duck_factory.dither_class import Dither
 from duck_factory.reachable_points import PathAnalyzer
-from pointsToPaths import PathFinder
-from point_sampling import (
+from duck_factory.points_to_paths import PathFinder
+from duck_factory.point_sampling import (
     sample_mesh_points,
     cluster_points,
     Point,
@@ -13,6 +13,7 @@ from point_sampling import (
 from scipy.spatial.transform import Rotation
 import json
 
+type Vector3 = tuple[float, float, float]
 type Quaternion = tuple[float, float, float, float]
 type PathPosition = tuple[*Point, *Quaternion]
 type Path = tuple[Color, list[PathPosition]]
@@ -130,7 +131,22 @@ def mesh_to_paths(
     return rpaths
 
 
-def norm_to_quat(normal):
+def norm_to_quat(normal: Vector3) -> Quaternion:
+    """
+    Convert a normal vector to a quaternion, in the robot/simulator coordinate system.
+
+    The normal vector is to be in the same coordinate system as the robot/simulator (z-up, x-forward, y-left),
+    and it should be the normal of the surface at which the robot should point (not the direction the robot should point to).
+
+    Args:
+        normal: The normal vector to convert
+
+    Returns:
+        The quaternion representing the rotation to align the z-axis with the normal
+
+    Raises:
+        ValueError: If the resulting quaternion contains NaNs
+    """
     # the normal points "away" from the point, we want our robot to point towards it
     normal = (-normal[0], -normal[1], -normal[2])
 
@@ -139,9 +155,11 @@ def norm_to_quat(normal):
 
     # handle edge cases where the normal is parallel to the z-axis
     if np.allclose(normal, [0, 0, 1]):
-        return (0, 5.06e-4, 0, 9.9e-1)
+        quat = (0, 5.06e-4, 0, 9.9e-1)
+        return quat / np.linalg.norm(quat)
     elif np.allclose(normal, [0, 0, -1]):
-        return (0, 9.9e-1, 0, 5.06e-4)
+        quat = (0, 9.9e-1, 0, 5.06e-4)
+        return quat / np.linalg.norm(quat)
 
     # the hand of the robot points towards the positive z-axis, so
     # we want the rotation that aligns the z-axis with our normal

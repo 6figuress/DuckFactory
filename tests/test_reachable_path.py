@@ -10,17 +10,17 @@ def test_is_point_inside_pen():
     p0 = (0, 0, 0)
     normal = (0, 0, 1)
 
-    inside_point = (0, 0, 0.005)
-    assert analyzer.is_point_inside_pen(inside_point, p0, normal) == True
+    inside_point = [(0, 0, 0.005)]
+    assert analyzer.are_points_inside_pen(inside_point, p0, normal) == True
 
-    inside_point = (0, 0.0019, 0.005)
-    assert analyzer.is_point_inside_pen(inside_point, p0, normal) == True
+    inside_point = [(0, 0.0019, 0.005)]
+    assert analyzer.are_points_inside_pen(inside_point, p0, normal) == True
 
-    outside_point = (3, 0, 0.3)
-    assert analyzer.is_point_inside_pen(outside_point, p0, normal) == False
+    outside_point = [(3, 0, 0.3)]
+    assert analyzer.are_points_inside_pen(outside_point, p0, normal) == False
 
-    outside_point = (0, 0.2, 0.005)
-    assert analyzer.is_point_inside_pen(outside_point, p0, normal) == False
+    outside_point = [(0, 0.2, 0.005)]
+    assert analyzer.are_points_inside_pen(outside_point, p0, normal) == False
 
 
 def test_is_reachable():

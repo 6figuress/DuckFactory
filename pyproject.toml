@@ -49,4 +49,4 @@ unfixable = [
 convention = "google" 
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["D"]  # Disable all docstring checks in tests/
+"tests/**/*.py" = ["D", "ANN"]  # Disable all docstring and type annotation checks in tests/

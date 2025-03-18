@@ -83,7 +83,7 @@ class PathAnalyzer:
         tube_length: float,
         diameter: float,
         cone_height: float,
-        step_angle: float,
+        step_angle: int,
         num_vectors: int,
     ):
         self.tube_length = tube_length

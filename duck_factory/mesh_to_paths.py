@@ -13,6 +13,7 @@ from point_sampling import (
 from scipy.spatial.transform import Rotation
 import json
 
+type Vector3 = tuple[float, float, float]
 type Quaternion = tuple[float, float, float, float]
 type PathPosition = tuple[*Point, *Quaternion]
 type Path = tuple[Color, list[PathPosition]]
@@ -130,7 +131,22 @@ def mesh_to_paths(
     return rpaths
 
 
-def norm_to_quat(normal):
+def norm_to_quat(normal: Vector3) -> Quaternion:
+    """
+    Convert a normal vector to a quaternion, in the robot/simulator coordinate system.
+
+    The normal vector is to be in the same coordinate system as the robot/simulator (z-up, x-forward, y-left),
+    and it should be the normal of the surface at which the robot should point (not the direction the robot should point to).
+
+    Args:
+        normal: The normal vector to convert
+
+    Returns:
+        The quaternion representing the rotation to align the z-axis with the normal
+
+    Raises:
+        ValueError: If the resulting quaternion contains NaNs
+    """
     # the normal points "away" from the point, we want our robot to point towards it
     normal = (-normal[0], -normal[1], -normal[2])
 

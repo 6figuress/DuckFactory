@@ -8,9 +8,9 @@ from dataclasses import dataclass
 from typing import List, Tuple
 import pyray as ray
 
-type Color = Tuple[int, int, int]
-type Point = Tuple[float, float, float]
-type Normal = Tuple[float, float, float]
+Color = Tuple[int, int, int]
+Point = Tuple[float, float, float]
+Normal = Tuple[float, float, float]
 
 
 @dataclass

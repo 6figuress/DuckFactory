@@ -8,9 +8,9 @@ from duck_factory.point_sampling import (
     Color,
 )
 
-type Quaternion = tuple[float, float, float, float]
-type PathPosition = tuple[*Point, *Quaternion]
-type Path = tuple[Color, list[PathPosition]]
+Quaternion = tuple[float, float, float, float]
+PathPosition = tuple[*Point, *Quaternion]
+Path = tuple[Color, list[PathPosition]]
 
 BASE_COLOR = (255, 255, 0, 255)
 COLORS = [
@@ -83,7 +83,7 @@ class PathAnalyzer:
         tube_length: float,
         diameter: float,
         cone_height: float,
-        step_angle: float,
+        step_angle: int,
         num_vectors: int,
     ):
         self.tube_length = tube_length

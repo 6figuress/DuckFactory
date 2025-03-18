@@ -13,10 +13,10 @@ from duck_factory.point_sampling import (
 from scipy.spatial.transform import Rotation
 import json
 
-type Vector3 = tuple[float, float, float]
-type Quaternion = tuple[float, float, float, float]
-type PathPosition = tuple[*Point, *Quaternion]
-type Path = tuple[Color, list[PathPosition]]
+Vector3 = tuple[float, float, float]
+Quaternion = tuple[float, float, float, float]
+PathPosition = tuple[*Point, *Quaternion]
+Path = tuple[Color, list[PathPosition]]
 
 BASE_COLOR = (255, 255, 0, 255)
 COLORS = [
@@ -62,8 +62,8 @@ def mesh_to_paths(
         tube_length=5e1,
         diameter=2e-2,
         cone_height=1e-2,
-        step_angle=360 / 10,
-        num_vectors=24 / 2,
+        step_angle=36,
+        num_vectors=12,
     )
 
     # TODO: sample duck + stand

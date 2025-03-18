@@ -1,3 +1,5 @@
+[![codecov](https://codecov.io/gh/6figuress/DuckFactory/graph/badge.svg?token=23COG54BQU)](https://codecov.io/gh/6figuress/DuckFactory)
+
 # Enviroment setup
 
 ## uv

@@ -34,8 +34,8 @@ class PathBounder:
             step_size (float): The step size for the adjustment
             precision (precision): The precision for rounding the intersection points
         """
-        # self.box = mesh.bounding_box_oriented
-        self.box = mesh.bounding_box
+        self.box = mesh.bounding_box_oriented
+        # self.box = mesh.bounding_box
         self.analyzer = analyzer
         self.model_points = model_points
         self.nz_threshold = nz_threshold
@@ -353,9 +353,6 @@ class PathBounder:
         start_exit, _ = start_adjusted_path[-1]
         end_exit, _ = end_adjusted_path[0]
 
-        print(f"Start exit: {start_exit}")
-        print(f"End exit: {end_exit}")
-
         path = self.generate_path_on_box(
             start_exit, end_exit, restricted_face=restricted_face
         )
@@ -388,6 +385,26 @@ class PathBounder:
 
         return path1 + intermediate_path + path2
 
+    def merge_all_path(
+        self, paths: list[Path], restricted_face: list[int] = None
+    ) -> Path:
+        """
+        Merge all paths together. And generating a new path between each path.
+
+        Parameters:
+            paths (list[list[tuple[tuple[float, float, float], tuple[float, float, float, float]]]]): The list of paths
+            restricted_face (list[int]): The list of face indices to exclude from the path
+
+        Returns:
+            list[tuple[tuple[float, float, float], tuple[float, float, float, float]]]: The merged path
+        """
+        final_path = paths[0]
+        for path in paths[1:]:
+            final_path = self.merge_path(
+                final_path, path, restricted_face=restricted_face
+            )
+        return final_path
+
 
 # -------------------------------------- Plotting -------------------------------------- #
 import matplotlib.pyplot as plt
@@ -409,8 +426,8 @@ def plot_path(
     fig = plt.figure()
     ax = fig.add_subplot(111, projection="3d")
 
-    box = mesh.bounding_box
-    # box = mesh.bounding_box_oriented
+    # box = mesh.bounding_box
+    box = mesh.bounding_box_oriented
 
     # Plot mesh bounding box
     obb_vertices = box.vertices
@@ -489,7 +506,6 @@ if __name__ == "__main__":
         tube_length=5e1, diameter=2e-2, cone_height=1e-2, step_angle=10, num_vectors=24
     )
     mesh = load_mesh("DuckComplete.obj")
-
     sampled_points = sample_surface(mesh, 5_000, sample_color=False)
 
     all_points = sampled_points[0]
@@ -499,6 +515,11 @@ if __name__ == "__main__":
         analyzer=analyzer,
         model_points=all_points,
     )
+
+    # Select two random points from all_points
+    random_indices = np.random.choice(len(all_points), 2, replace=False)
+    # start_point = all_points[random_indices[0]]
+    # end_point = all_points[random_indices[1]]
 
     start_point = [0.0321, 0.0268, 0.04844]
     start_normal = (0.3356, 0.0207, 0.9417)
@@ -518,20 +539,22 @@ if __name__ == "__main__":
 
     plot_path(mesh, path_with_orientation, restricted_face=restricted_face)
 
-    #  Generate two paths example values
-    path1 = [
-        ([0.0321, 0.0268, 0.04844], (0.3356, 0.0207, 0.9417)),
-        ([0.04, 0.0368, 0.04844], (0.456, 0.0207, 0.2417)),
-        ([0.0321, 0.0268, 0.1844], (0.3356, 0.4207, 0.7417)),
-    ]
+    # #  Generate two paths example values
+    # path1 = [
+    #     ([0.0321, 0.0268, 0.04844], (0.3356, 0.0207, 0.9417)),
+    #     ([0.04, 0.0368, 0.04844], (0.456, 0.0207, 0.2417)),
+    #     ([0.0321, 0.0268, 0.1844], (0.3356, 0.4207, 0.7417)),
+    # ]
 
-    path2 = [
-        ([0.32, 0.048, 0.05], (0.6, 0.01, 0.03)),
-        ([0.5, 0.06, 0.1], (0.01, 0.1, 0.054)),
-        ([0.6, 0.08, 0.2], (0.1, 0.1, 0.04)),
-    ]
+    # path2 = [
+    #     ([0.32, 0.048, 0.05], (0.6, 0.01, 0.93)),
+    #     ([0.5, 0.06, 0.1], (0.01, 0.1, 0.054)),
+    #     ([0.6, 0.08, 0.2], (0.1, 0.1, 0.04)),
+    # ]
 
-    merged_path = path_finder.merge_path(path1, path2, restricted_face=restricted_face)
+    # merged_path = path_finder.merge_path(path1, path2, restricted_face=restricted_face)
 
-    print(f"Merged path with {len(merged_path)} points")
-    print(merged_path)
+    # print(f"Merged path with {len(merged_path)} points")
+    # print(merged_path)
+
+    # plot_path(mesh, merged_path, restricted_face=restricted_face)

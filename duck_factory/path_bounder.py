@@ -513,7 +513,7 @@ def compute_path_with_orientation(
     return path
 
 
-from duck_factory.pointsToPaths import PathFinder
+from duck_factory.points_to_paths import PathFinder
 from duck_factory.point_sampling import (
     sample_mesh_points,
     cluster_points,

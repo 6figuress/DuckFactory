@@ -3,7 +3,7 @@ from trimesh import Trimesh, load_mesh
 from trimesh.sample import sample_surface
 from duck_factory.dither_class import Dither
 from duck_factory.reachable_points import PathAnalyzer
-from pointsToPaths import PathFinder
+from duck_factory.points_to_paths import PathFinder
 from point_sampling import (
     sample_mesh_points,
     cluster_points,

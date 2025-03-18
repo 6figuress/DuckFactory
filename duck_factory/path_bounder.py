@@ -4,11 +4,11 @@ from collections import deque
 from duck_factory.reachable_points import PathAnalyzer
 from scipy.spatial.distance import cdist
 
-type Position = tuple[float, float, float]
-type Positions = list[Position]
-type Orientation = tuple[float, float, float, float]
-type PositionWithOrientation = tuple[Position, Orientation]
-type Path = list[PositionWithOrientation]
+Position = tuple[float, float, float]
+Positions = list[Position]
+Orientation = tuple[float, float, float, float]
+PositionWithOrientation = tuple[Position, Orientation]
+Path = list[PositionWithOrientation]
 
 
 class PathBounder:

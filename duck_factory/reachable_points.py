@@ -8,9 +8,9 @@ from duck_factory.point_sampling import (
     Color,
 )
 
-type Quaternion = tuple[float, float, float, float]
-type PathPosition = tuple[*Point, *Quaternion]
-type Path = tuple[Color, list[PathPosition]]
+Quaternion = tuple[float, float, float, float]
+PathPosition = tuple[*Point, *Quaternion]
+Path = tuple[Color, list[PathPosition]]
 
 BASE_COLOR = (255, 255, 0, 255)
 COLORS = [

@@ -1,6 +1,6 @@
 from PIL import Image
 
-type Color = tuple[int, int, int]
+Color = tuple[int, int, int]
 
 
 def color_zones(base: Image, mask: Image, replacements: dict[Color, Color]) -> Image:

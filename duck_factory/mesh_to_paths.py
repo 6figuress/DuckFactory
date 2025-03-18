@@ -13,10 +13,10 @@ from duck_factory.point_sampling import (
 from scipy.spatial.transform import Rotation
 import json
 
-type Vector3 = tuple[float, float, float]
-type Quaternion = tuple[float, float, float, float]
-type PathPosition = tuple[*Point, *Quaternion]
-type Path = tuple[Color, list[PathPosition]]
+Vector3 = tuple[float, float, float]
+Quaternion = tuple[float, float, float, float]
+PathPosition = tuple[*Point, *Quaternion]
+Path = tuple[Color, list[PathPosition]]
 
 BASE_COLOR = (255, 255, 0, 255)
 COLORS = [

@@ -10,10 +10,12 @@ from duck_factory.point_sampling import (
     Point,
     Color,
 )
+from duck_factory.path_bounder import PathBounder
 from scipy.spatial.transform import Rotation
 import json
+from collections import defaultdict
 
-Vector3 = tuple[float, float, float]
+Normal = tuple[float, float, float]
 Quaternion = tuple[float, float, float, float]
 PathPosition = tuple[*Point, *Quaternion]
 Path = tuple[Color, list[PathPosition]]
@@ -31,7 +33,10 @@ COLORS = [
 
 
 def mesh_to_paths(
-    mesh: Trimesh, n_samples: int = 50_000, max_dist: float = 0.1
+    mesh: Trimesh,
+    n_samples: int = 50_000,
+    max_dist: float = 0.1,
+    home_point: tuple[Point, Normal] = ((0, 0, 0.25), (0, 0, -1)),
 ) -> list[Path]:
     """
     Do the full conversion from a textured mesh to a list of IK-ready paths.
@@ -43,6 +48,7 @@ def mesh_to_paths(
         mesh: The mesh to convert to paths
         n_samples: The number of samples to take from the mesh
         max_dist: The maximum distance between two samples for neighborhood
+        home_point: The point where the robot should start and end its paths, represented by a point and a normal
 
     Returns:
         List of paths, each containing a color and a list of PathPosition (point and quaternion)
@@ -67,7 +73,7 @@ def mesh_to_paths(
     )
 
     # TODO: sample duck + stand
-    mesh_points = sample_surface(mesh, n_samples, sample_color=False)
+    mesh_points = sample_surface(mesh, n_samples, sample_color=False)[0]
 
     counter = 0
     valid_points = []
@@ -88,7 +94,7 @@ def mesh_to_paths(
 
         # Find a valid orientation for the point
         valid, new_norm = path_analyzer.find_valid_orientation(
-            point.coordinates, point.normal, mesh_points[0]
+            point.coordinates, point.normal, mesh_points
         )
 
         if valid:
@@ -102,36 +108,45 @@ def mesh_to_paths(
     # Cluster the points by proximity and color
     clusters = cluster_points(valid_points)
 
-    # Compute the paths for each cluster
-    paths = []
+    # Compute the paths for each cluster, and store lists of paths by color
+    color_paths = defaultdict(list)
     for points, color, is_noise in clusters:
         if is_noise:
             # The noise clusters contain points that we don't want to connect
             # Create a new path for each point
             for point in points:
-                paths.append((color, [point]))
+                # color_paths[color].append([(point.coordinates, point.normal)])
+                pass
         else:
             # Connect the points in the cluster to form paths
             path_finder = PathFinder(points, max_dist)
             paths_positions = path_finder.find_paths()
 
             for path in paths_positions:
-                paths.append((color, path))
+                color_paths[color].append(path)
 
-    # Format the paths
+    # Merge the paths for each color by inserting paths between them
     rpaths = []
-    for color, points in paths:
-        p = []
-        for point in points:
-            n = point.normal
-            p.append((*point.coordinates, *norm_to_quat(n)))
+    for color, paths in color_paths.items():
+        bounder = PathBounder(mesh, path_analyzer, mesh_points)
 
-        rpaths.append((color, p))
+        # Convert paths to position-normal format and add home point at the end of each path
+        prepped_paths = [
+            [*[(point.coordinates, point.normal) for point in path], home_point]
+            for path in paths
+        ]
+
+        merged = bounder.merge_all_path(prepped_paths, restricted_face=[3, 8])
+
+        # Convert normals to quaternions in one step
+        converted_path = [(pos, norm_to_quat(norm)) for pos, norm in merged]
+
+        rpaths.append((color, converted_path))
 
     return rpaths
 
 
-def norm_to_quat(normal: Vector3) -> Quaternion:
+def norm_to_quat(normal: Normal) -> Quaternion:
     """
     Convert a normal vector to a quaternion, in the robot/simulator coordinate system.
 

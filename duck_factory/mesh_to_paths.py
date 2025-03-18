@@ -4,7 +4,7 @@ from trimesh.sample import sample_surface
 from duck_factory.dither_class import Dither
 from duck_factory.reachable_points import PathAnalyzer
 from duck_factory.points_to_paths import PathFinder
-from point_sampling import (
+from duck_factory.point_sampling import (
     sample_mesh_points,
     cluster_points,
     Point,
@@ -155,9 +155,11 @@ def norm_to_quat(normal: Vector3) -> Quaternion:
 
     # handle edge cases where the normal is parallel to the z-axis
     if np.allclose(normal, [0, 0, 1]):
-        return (0, 5.06e-4, 0, 9.9e-1)
+        quat = (0, 5.06e-4, 0, 9.9e-1)
+        return quat / np.linalg.norm(quat)
     elif np.allclose(normal, [0, 0, -1]):
-        return (0, 9.9e-1, 0, 5.06e-4)
+        quat = (0, 9.9e-1, 0, 5.06e-4)
+        return quat / np.linalg.norm(quat)
 
     # the hand of the robot points towards the positive z-axis, so
     # we want the rotation that aligns the z-axis with our normal

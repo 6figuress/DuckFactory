@@ -165,7 +165,7 @@ class PathFinder:
         plt.show()
 
 
-def main() -> None:
+def main() -> None:  # pragma: no cover
     """Main function to execute the PathFinder with a sample mesh and plot the paths."""
     BASE_COLOR = (255, 255, 0, 255)
     COLORS = [
@@ -200,5 +200,5 @@ def main() -> None:
     path_finder.plot_paths(paths)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     main()

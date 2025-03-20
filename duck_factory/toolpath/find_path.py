@@ -113,7 +113,7 @@ def find_path(
     return paths
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     if len(sys.argv) != 3:
         print("Usage: python find_path.py <in_filename> <out_filename>")
         sys.exit(1)

@@ -501,7 +501,7 @@ def plot_path(
 
 from trimesh.sample import sample_surface
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     analyzer = PathAnalyzer(
         tube_length=5e1, diameter=2e-2, cone_height=1e-2, step_angle=10, num_vectors=24
     )

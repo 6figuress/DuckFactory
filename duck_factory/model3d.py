@@ -327,7 +327,7 @@ class Mesh:
 
 
 # Usage
-def main() -> None:
+def main() -> None:  # pragma: no cover
     """Main function to create a mesh, display it, update its texture, and display it again."""
     # Creating a mesh object
     mesh = Mesh(
@@ -350,5 +350,5 @@ def main() -> None:
         print(f"Coordinates: {point[0]}, Color: {point[1]}")
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     main()

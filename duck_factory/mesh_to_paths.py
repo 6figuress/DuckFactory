@@ -216,7 +216,7 @@ def norm_to_quat(normal: Normal) -> Quaternion:
     return quat
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     mesh = load_mesh("cube.obj")
     paths = mesh_to_paths(mesh, max_dist=0.024)
 

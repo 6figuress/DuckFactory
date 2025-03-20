@@ -131,7 +131,7 @@ def cluster_points(
     return clusters_flat
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     BASE_COLOR = (255, 255, 0, 255)
     COLORS = [
         BASE_COLOR,  # Yellow

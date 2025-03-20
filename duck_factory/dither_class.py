@@ -134,7 +134,7 @@ class Dither:
         return img
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     """
     # Example usage, to dither an image and save it to output.png:
     # python dither_class.py -o output.png input.png

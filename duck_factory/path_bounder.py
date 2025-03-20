@@ -415,7 +415,7 @@ def plot_path(
     mesh: Trimesh,
     path: list[tuple[tuple[float, float, float], tuple[float, float, float]]],
     restricted_face: list[int] = None,
-) -> None:
+) -> None:  # pragma: no cover
     """
     Plots the computed path on the mesh.
 

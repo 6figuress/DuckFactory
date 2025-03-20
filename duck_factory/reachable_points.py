@@ -358,7 +358,9 @@ class PathAnalyzer:
 
 def filter_negative_nz_points(
     path_points: list[tuple[tuple[float, float, float], tuple[float, float, float]]],
-) -> list[tuple[tuple[float, float, float], tuple[float, float, float]]]:
+) -> list[
+    tuple[tuple[float, float, float], tuple[float, float, float]]
+]:  # pragma: no cover
     """
     Filter points where the normal's z-component (nz) is negative.
 

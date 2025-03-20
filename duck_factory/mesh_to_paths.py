@@ -130,18 +130,23 @@ def mesh_to_paths(
     for color, paths in color_paths.items():
         bounder = PathBounder(mesh, path_analyzer, mesh_points)
 
-        # Convert paths to position-normal format and add home point at the end of each path
+        # Convert paths to position-normal format
         prepped_paths = [
-            [*[(point.coordinates, point.normal) for point in path], home_point]
-            for path in paths
+            [(point.coordinates, point.normal) for point in path] for path in paths
         ]
 
+        # Finish the path at the home point
+        prepped_paths = prepped_paths + [[home_point]]
+
+        # Merge the paths
         merged = bounder.merge_all_path(prepped_paths, restricted_face=[3, 8])
 
-        # Convert normals to quaternions in one step
+        # Convert normals to quaternions
         converted_path = [(pos, norm_to_quat(norm)) for pos, norm in merged]
 
         rpaths.append((color, converted_path))
+
+    # TODO: Merge the different colors paths together with pen-switching
 
     return rpaths
 

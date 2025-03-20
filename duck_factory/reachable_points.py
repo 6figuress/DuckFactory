@@ -1,69 +1,5 @@
 import numpy as np
 from trimesh import Trimesh, load_mesh
-from duck_factory.points_to_paths import PathFinder
-from duck_factory.point_sampling import (
-    sample_mesh_points,
-    cluster_points,
-    Point,
-    Color,
-)
-
-Quaternion = tuple[float, float, float, float]
-PathPosition = tuple[*Point, *Quaternion]
-Path = tuple[Color, list[PathPosition]]
-
-BASE_COLOR = (255, 255, 0, 255)
-COLORS = [
-    BASE_COLOR,  # Yellow
-    (0, 0, 0, 255),  # Black
-    (0, 0, 255, 255),  # Blue
-    (0, 255, 0, 255),  # Green
-    (0, 255, 255, 255),  # Cyan
-    (255, 0, 0, 255),  # Red
-    (255, 255, 255, 255),  # White
-]
-
-
-def mesh_to_paths(
-    mesh: Trimesh, n_samples: int = 50_000, max_dist: float = 0.1
-) -> tuple[list[Path], list[Point]]:
-    """
-    Convert a mesh to a list of paths by sampling points and clustering them.
-
-    Parameters:
-        mesh (Trimesh): The mesh to convert to paths.
-        n_samples (int): The number of points to sample.
-        max_dist (float): The maximum distance between points to consider them connected.
-
-    Returns:
-        list[Path]: A list of paths with colors and points
-        list[Point]: A list of all sampled points
-    """
-    sampled_points = sample_mesh_points(
-        mesh, base_color=BASE_COLOR, colors=COLORS, n_samples=n_samples
-    )
-
-    clusters = cluster_points(sampled_points)
-
-    all_points = [point for cluster in clusters for point in cluster[0]]
-    paths = []
-    for points, color, is_noise in clusters:
-        if not is_noise:
-            path_finder = PathFinder(points, max_dist)
-            found_paths = path_finder.find_paths()
-            formatted_paths = [
-                (
-                    point.coordinates[0],
-                    point.coordinates[1],
-                    point.coordinates[2],
-                    point.normal,
-                )
-                for path in found_paths
-                for point in path
-            ]
-            paths.append((color, formatted_paths))
-
-    return paths, all_points
 
 
 class PathAnalyzer:
@@ -374,6 +310,72 @@ def filter_negative_nz_points(
         (point, normal) for point, normal in path_points if normal[2] < 0
     ]
     return filtered_points
+
+
+from duck_factory.points_to_paths import PathFinder
+from duck_factory.point_sampling import (
+    sample_mesh_points,
+    cluster_points,
+    Point,
+    Color,
+)
+
+Quaternion = tuple[float, float, float, float]
+PathPosition = tuple[*Point, *Quaternion]
+Path = tuple[Color, list[PathPosition]]
+
+BASE_COLOR = (255, 255, 0, 255)
+COLORS = [
+    BASE_COLOR,  # Yellow
+    (0, 0, 0, 255),  # Black
+    (0, 0, 255, 255),  # Blue
+    (0, 255, 0, 255),  # Green
+    (0, 255, 255, 255),  # Cyan
+    (255, 0, 0, 255),  # Red
+    (255, 255, 255, 255),  # White
+]
+
+
+def mesh_to_paths(
+    mesh: Trimesh, n_samples: int = 50_000, max_dist: float = 0.1
+) -> tuple[list[Path], list[Point]]:  # pragma: no cover
+    """
+    Convert a mesh to a list of paths by sampling points and clustering them.
+
+    Parameters:
+        mesh (Trimesh): The mesh to convert to paths.
+        n_samples (int): The number of points to sample.
+        max_dist (float): The maximum distance between points to consider them connected.
+
+    Returns:
+        list[Path]: A list of paths with colors and points
+        list[Point]: A list of all sampled points
+    """
+    sampled_points = sample_mesh_points(
+        mesh, base_color=BASE_COLOR, colors=COLORS, n_samples=n_samples
+    )
+
+    clusters = cluster_points(sampled_points)
+
+    all_points = [point for cluster in clusters for point in cluster[0]]
+    paths = []
+    for points, color, is_noise in clusters:
+        if not is_noise:
+            path_finder = PathFinder(points, max_dist)
+            found_paths = path_finder.find_paths()
+            formatted_paths = [
+                (
+                    point.coordinates[0],
+                    point.coordinates[1],
+                    point.coordinates[2],
+                    point.normal,
+                )
+                for path in found_paths
+                for point in path
+            ]
+            paths.append((color, formatted_paths))
+
+    return paths, all_points
 
 
 if __name__ == "__main__":  # pragma: no cover

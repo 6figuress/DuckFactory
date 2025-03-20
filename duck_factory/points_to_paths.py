@@ -124,45 +124,42 @@ class PathFinder:
 
         return paths
 
-    def plot_paths(self, paths: list[list[SampledPoint]]) -> None:
-        """
-        Displays the computed paths in a 3D graph.
 
-        :param paths: List of paths to plot
-        """
-        fig = plt.figure()
-        ax = fig.add_subplot(111, projection="3d")
+def plot_paths(paths: list[list[SampledPoint]]) -> None:  # pragma: no cover
+    """
+    Displays the computed paths in a 3D graph.
 
-        for i, path in enumerate(paths):
-            # Extract coordinates and color from SampledPoint
-            coords = np.array([point.coordinates for point in path])
-            colors = [
-                [point.color[0] / 255, point.color[1] / 255, point.color[2] / 255]
-                for point in path
-            ]
+    :param paths: List of paths to plot
+    """
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection="3d")
 
-            if len(coords) > 1:
-                ax.scatter(
-                    coords[:, 0], coords[:, 1], coords[:, 2], c=colors, marker="o"
-                )
-                ax.plot(
-                    coords[:, 0],
-                    coords[:, 1],
-                    coords[:, 2],
-                    marker="o",
-                    linestyle="-",
-                    label=f"Path {i + 1}",
-                )
-            else:
-                ax.scatter(
-                    coords[:, 0], coords[:, 1], coords[:, 2], c="blue", marker="x"
-                )
+    for i, path in enumerate(paths):
+        # Extract coordinates and color from SampledPoint
+        coords = np.array([point.coordinates for point in path])
+        colors = [
+            [point.color[0] / 255, point.color[1] / 255, point.color[2] / 255]
+            for point in path
+        ]
 
-        ax.set_xlabel("X")
-        ax.set_ylabel("Y")
-        ax.set_zlabel("Z")
-        ax.legend()
-        plt.show()
+        if len(coords) > 1:
+            ax.scatter(coords[:, 0], coords[:, 1], coords[:, 2], c=colors, marker="o")
+            ax.plot(
+                coords[:, 0],
+                coords[:, 1],
+                coords[:, 2],
+                marker="o",
+                linestyle="-",
+                label=f"Path {i + 1}",
+            )
+        else:
+            ax.scatter(coords[:, 0], coords[:, 1], coords[:, 2], c="blue", marker="x")
+
+    ax.set_xlabel("X")
+    ax.set_ylabel("Y")
+    ax.set_zlabel("Z")
+    ax.legend()
+    plt.show()
 
 
 def main() -> None:  # pragma: no cover
@@ -197,7 +194,7 @@ def main() -> None:  # pragma: no cover
         f"Number of paths (length <= 1): {len([path for path in paths if len(path) <= 1])}"
     )
 
-    path_finder.plot_paths(paths)
+    plot_paths(paths)
 
 
 if __name__ == "__main__":  # pragma: no cover

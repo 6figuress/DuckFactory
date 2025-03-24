@@ -129,8 +129,8 @@ def test_compute_path_with_orientation(path_bounder):
 
 
 def test_merge_path(path_bounder):
-    path1 = [((0.1, 0.1, 0.1), (1, 0, 0)), ((0.2, 0.2, 0.2), (0, 1, 0))]
-    path2 = [((0.8, 0.8, 0.8), (0, 0, 1)), ((0.9, 0.9, 0.9), (-1, 0, 0))]
+    path1 = [((0.1, 0.1, 0.1), (1, 0.5, 0)), ((0.2, 0.2, 0.2), (0.5, 1, 0))]
+    path2 = [((0.8, 0.8, 0.8), (0.5, 0, 1)), ((0.9, 0.9, 0.9), (-1, 0.5, 0))]
     merged_path = path_bounder.merge_path(path1, path2)
     assert isinstance(merged_path, list)
     assert len(merged_path) >= len(path1) + len(path2)
@@ -139,9 +139,9 @@ def test_merge_path(path_bounder):
 
 def test_merge_all_path(path_bounder):
     paths = [
-        [((0.1, 0.1, 0.1), (1, 0, 0)), ((0.2, 0.2, 0.2), (0, 1, 0))],
-        [((0.4, 0.4, 0.4), (0, 0, 1)), ((0.5, 0.5, 0.5), (-1, 0, 0))],
-        [((0.8, 0.8, 0.8), (0, -1, 0)), ((0.9, 0.9, 0.9), (1, 1, 1))],
+        [((0.1, 0.1, 0.1), (1, 0.5, 0)), ((0.2, 0.2, 0.2), (0, 1, 0))],
+        [((0.4, 0.4, 0.4), (0, 0.5, 1)), ((0.5, 0.5, 0.5), (-1, 0.5, 0))],
+        [((0.8, 0.8, 0.8), (0.5, -1, 0)), ((0.9, 0.9, 0.9), (1, 1, 1))],
     ]
     merged_path = path_bounder.merge_all_path(paths)
     assert isinstance(merged_path, list)

@@ -130,12 +130,26 @@ class PathBounder:
         box_axes = box_transform[:3, :3]
         box_extents = self.box.primitive.extents
 
+        if np.allclose(direction, [0, 0, 0]):
+            raise ValueError("Cannot normalize a zero vector (direction is [0, 0, 0])")
+
         inv_axes = np.linalg.inv(box_axes)
         local_origin = np.dot(inv_axes, np.array(origin) - box_center)
         local_direction = np.dot(inv_axes, direction)
 
-        t_min = (-box_extents - local_origin) / local_direction
-        t_max = (box_extents - local_origin) / local_direction
+        with np.errstate(divide="ignore", invalid="ignore"):
+            epsilon = 1e-8
+
+            t_min = np.where(
+                np.abs(local_direction) > epsilon,
+                (-box_extents - local_origin) / local_direction,
+                -np.inf,
+            )
+            t_max = np.where(
+                np.abs(local_direction) > epsilon,
+                (box_extents - local_origin) / local_direction,
+                np.inf,
+            )
 
         t_near = np.max(np.minimum(t_min, t_max))
         t_far = np.min(np.maximum(t_min, t_max))
@@ -313,6 +327,11 @@ class PathBounder:
             """
             if normal[2] < self.nz_threshold:
                 target_normal = (normal[0], normal[1], self.nz_threshold)
+
+                if np.allclose(target_normal, [0, 0, 0]):
+                    # It's mean that the normal is pointing directly to the z-axis
+                    # So add some offset to the target normal
+                    target_normal = (0.01, 0, self.nz_threshold)
 
                 adjusted_positions, adjusted_normals = (
                     self.analyzer.adjust_and_move_backwards(

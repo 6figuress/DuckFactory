@@ -170,6 +170,9 @@ def norm_to_quat(normal: Normal) -> Quaternion:
     # the normal points "away" from the point, we want our robot to point towards it
     normal = (-normal[0], -normal[1], -normal[2])
 
+    if np.allclose(normal, [0, 0, 0]):
+        raise ValueError("Cannot normalize a zero vector (normal is [0, 0, 0])")
+
     # normalize the normal, just to be sure
     normal = normal / np.linalg.norm(normal)
 

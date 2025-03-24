@@ -127,10 +127,12 @@ def sample_mesh_points(
 
 def cluster_points(
     points: List[SampledPoint],
-    eps: float = 0.0025 / 2,
-    min_samples: int = 10,
+    eps: float = 0.005,  # Reduced from 0.0025/2
+    min_samples: int = 5,  # Reduced from 10
 ) -> List[Tuple[List[SampledPoint], Color, bool]]:
     """Clusters points that are close to each other."""
+    print(f"Starting clustering with {len(points)} points")
+
     color_groups = {}
     for point in points:
         if point.color not in color_groups:
@@ -139,12 +141,20 @@ def cluster_points(
 
     clusters_flat = []
     for color, color_points in color_groups.items():
+        print(f"Clustering {len(color_points)} points of color {color}")
         point_coords = np.array([p.coordinates for p in color_points])
 
         clustering = DBSCAN(eps=eps, min_samples=min_samples, n_jobs=-1).fit(
             point_coords
         )
         labels = clustering.labels_
+
+        # Count number of clusters
+        n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
+        n_noise = list(labels).count(-1)
+        print(
+            f"Found {n_clusters} clusters and {n_noise} noise points for color {color}"
+        )
 
         color_clusters = {}
         for i, label in enumerate(labels):
@@ -153,9 +163,10 @@ def cluster_points(
             color_clusters[label].append(color_points[i])
 
         for label, cluster_points in color_clusters.items():
-            if cluster_points:
+            if cluster_points:  # Include noise points (-1 label)
                 clusters_flat.append((cluster_points, color, label == -1))
 
+    print(f"Total clusters generated: {len(clusters_flat)}")
     return clusters_flat
 
 

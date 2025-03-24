@@ -112,19 +112,28 @@ def mesh_to_paths(
     # Compute the paths for each cluster, and store lists of paths by color
     color_paths = defaultdict(list)
     for points, color, is_noise in clusters:
+        print(
+            f"Processing cluster of {len(points)} points with color {color} (noise: {is_noise})"
+        )
         if is_noise:
+            # Create individual paths for noise points
             for point in points:
-                pass
+                color_paths[color].append([point])
         else:
             path_finder = PathFinder(points, max_dist)
             paths_positions = path_finder.find_paths()
 
+            print(f"Found {len(paths_positions)} paths for cluster")
             for path in paths_positions:
                 color_paths[color].append(path)
 
     # Merge the paths for each color by inserting paths between them
     rpaths = []
     for color, paths in color_paths.items():
+        print(f"Processing {len(paths)} paths of color {color}")
+        if not paths:
+            continue
+
         bounder = PathBounder(mesh, path_analyzer, mesh_points)
 
         # Convert paths to position-normal format
@@ -136,13 +145,18 @@ def mesh_to_paths(
         prepped_paths = prepped_paths + [[home_point]]
 
         # Merge the paths
-        merged = bounder.merge_all_path(prepped_paths, restricted_face=[3, 8])
-
-        # Convert normals to quaternions
-        converted_path = [(pos, norm_to_quat(norm)) for pos, norm in merged]
-
-        rpaths.append((color, converted_path))
-
+        try:
+            merged = bounder.merge_all_path(prepped_paths, restricted_face=[3, 8])
+            # Convert normals to quaternions
+            converted_path = [(pos, norm_to_quat(norm)) for pos, norm in merged]
+            rpaths.append((color, converted_path))
+        except Exception as e:
+            print(f"Error merging paths for color {color}: {e}")
+            # Try to salvage what we can by creating individual paths
+            for path in prepped_paths:
+                if path and path != [home_point]:
+                    converted_path = [(pos, norm_to_quat(norm)) for pos, norm in path]
+                    rpaths.append((color, converted_path))
     return rpaths
 
 
@@ -185,7 +199,7 @@ def norm_to_quat(normal: Normal) -> Quaternion:
 
 
 if __name__ == "__main__":  # pragma: no cover
-    mesh = load_mesh("duck.glb")
+    mesh = load_mesh("duck.obj")
     print(f"Loaded mesh with {len(mesh.vertices)} vertices")
     print(f"Mesh has vertex colors: {hasattr(mesh.visual, 'vertex_colors')}")
     print(f"Mesh has material: {hasattr(mesh.visual, 'material')}")
@@ -207,14 +221,23 @@ if __name__ == "__main__":  # pragma: no cover
                 texture.save("texture.png")
                 print("Saved texture to texture.png")
 
-    # Increase number of samples and adjust max_dist
     paths = mesh_to_paths(mesh, n_samples=50000, max_dist=0.024)
 
     print("\nProcessing complete:")
     print(f"Number of paths: {len(paths)}")
-    print(f"Number of points: {sum([len(path) for _, path in paths])}")
+    total_points = sum([len(path[1]) for path in paths])
+    print(f"Number of points: {total_points}")
+
+    # Print path details
+    for i, (color, path) in enumerate(paths):
+        print(f"\nPath {i}:")
+        print(f"Color: {color}")
+        print(f"Number of points: {len(path)}")
+        if len(path) > 0:
+            print(f"First point: {path[0]}")
+            print(f"Last point: {path[-1]}")
 
     with open("paths.json", "w") as f:
         json.dump(paths, f, indent=4)
 
-    print("Paths exported to paths.json")
+    print("\nPaths exported to paths.json")

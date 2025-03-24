@@ -128,7 +128,7 @@ class PathBounder:
         box_transform = self.box.primitive.transform
         box_center = box_transform[:3, 3]
         box_axes = box_transform[:3, :3]
-        box_extents = self.box.primitive.extents
+        box_extents = self.box.primitive.extents / 2
 
         if np.allclose(direction, [0, 0, 0]):
             raise ValueError("Cannot normalize a zero vector (direction is [0, 0, 0])")
@@ -266,30 +266,41 @@ class PathBounder:
         start_idx = np.argmin(cdist([start], vertices))
         end_idx = np.argmin(cdist([end], vertices))
 
-        # BFS to find shortest path
-        queue = deque([(start_idx, [])])
-        visited = set([start_idx])
+        # BFS to find shortest path along edges
+        queue = deque([(start_idx, [start_idx])])
+        visited = set()
 
         while queue:
             current, path = queue.popleft()
+
             if current == end_idx:
-                result_path = [tuple(vertices[i]) for i in path]
+                result_path = [tuple(map(float, vertices[i])) for i in path]
 
-                if len(result_path) < 2:
-                    return []  # No intermediate points found
-
-                # Compute normals for each segment
+                # Compute normals for each point transition
                 path_with_normals = []
+                previous_normal = None
+
                 for i in range(len(result_path) - 1):
-                    normal = tuple(
-                        self.get_normal_to_face(result_path[i], result_path[i + 1])
-                    )
-                    path_with_normals.append((result_path[i], normal))
+                    point1, point2 = result_path[i], result_path[i + 1]
+                    normal = tuple(self.get_normal_to_face(point1, point2))
+
+                    path_with_normals.append((point1, normal))
+                    previous_normal = normal
+
+                # Add the last point with the last computed normal
+                path_with_normals.append((result_path[-1], previous_normal))
+
+                print(f"Found path with {len(path_with_normals)} points")
+                print(path_with_normals)
+
                 return path_with_normals
+
+            if current in visited:
+                continue
+            visited.add(current)
 
             for neighbor in adjacency[current]:
                 if neighbor not in visited:
-                    visited.add(neighbor)
                     queue.append((neighbor, path + [neighbor]))
 
         return []
@@ -390,7 +401,6 @@ class PathBounder:
         final_path = start_adjusted_path
         final_path.extend(path)
         final_path.extend(end_adjusted_path)
-
         return final_path
 
     def merge_path(
@@ -542,16 +552,19 @@ if __name__ == "__main__":  # pragma: no cover
         mesh=mesh,
         analyzer=analyzer,
         model_points=all_points,
+        nz_threshold=-1.0,
     )
 
     # Select two random points from all_points
     random_indices = np.random.choice(len(all_points), 2, replace=False)
-    # start_point = all_points[random_indices[0]]
-    # end_point = all_points[random_indices[1]]
+    start_point = all_points[random_indices[0]]
+    end_point = all_points[random_indices[1]]
+    # start_point = [0.04688027, 0.08760643, -0.00091923]
+    # end_point = [0.03821731, 0.07833333, -0.00019212]
 
-    start_point = [0.0321, 0.0268, 0.04844]
+    # start_point = [0.0321, 0.0268, 0.04844]
     start_normal = (0.3356, 0.0207, 0.9417)
-    end_point = [0.0276, 0.11949, -0.0129]
+    # end_point = [0.0276, 0.11949, -0.0129]
     end_normal = (-0.42780, 0.84981, -0.307881)
 
     # restricted_face = [3, 8]

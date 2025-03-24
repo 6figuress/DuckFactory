@@ -1,28 +1,33 @@
 """Provides functions to sample points from a mesh and cluster them by color."""
 
-import numpy as np
-import trimesh
-from trimesh.sample import sample_surface
-from sklearn.cluster import DBSCAN
 from dataclasses import dataclass
 from typing import List, Tuple
+
+import numpy as np
 import pyray as ray
+import trimesh
+from PIL import Image
+from sklearn.cluster import DBSCAN
+from trimesh.sample import sample_surface
 
 Color = Tuple[int, int, int]
 Point = Tuple[float, float, float]
 Normal = Tuple[float, float, float]
 
 
+def get_texture(mesh: trimesh.Trimesh):
+    """Get texture from mesh, handling both PBR and regular materials."""
+    if hasattr(mesh.visual.material, "baseColorTexture"):
+        return mesh.visual.material.baseColorTexture
+    elif hasattr(mesh.visual, "material") and hasattr(mesh.visual.material, "image"):
+        return mesh.visual.material.image
+    else:
+        return Image.new("RGB", (256, 256), color=(255, 255, 0))
+
+
 @dataclass
 class SampledPoint:
-    """
-    Represents a point sampled from a mesh surface with additional metadata.
-
-    Attributes:
-        coordinates: 3D coordinates of the point
-        color: RGB color of the point
-        normal: Surface normal at the point
-    """
+    """Represents a point sampled from a mesh surface with additional metadata."""
 
     coordinates: Point
     color: Color
@@ -35,49 +40,87 @@ def sample_mesh_points(
     colors: List[Color],
     n_samples: int = 500_000,
 ) -> List[SampledPoint]:
-    """
-    Samples points from the surface of a mesh and assigns them to the closest color in the palette.
+    """Samples points from the surface of a mesh and assigns them to the closest color."""
+    # Sample points and faces (without color initially)
+    points, face_indices = sample_surface(mesh, n_samples, sample_color=False)
 
-    Notes:  Points with the base color are ignored.
-            As some points may be discarded after sampling, the number of sampled points may be less than n_samples.
+    # Try to get color from texture
+    if (
+        hasattr(mesh.visual.material, "baseColorTexture")
+        and mesh.visual.material.baseColorTexture is not None
+    ):
+        print("Using baseColorTexture")
+        texture = mesh.visual.material.baseColorTexture
+        # Convert texture to numpy array if it's a PIL Image
+        texture_array = np.array(texture)
 
-    Args:
-        mesh: The mesh to sample points from.
-        base_color: The base color of the mesh. Points with this color will be ignored.
-        colors: A list of colors in the palette.
-        n_samples: The number of points to sample.
+        # Get UV coordinates
+        if not hasattr(mesh.visual, "uv"):
+            print("No UV coordinates found, using default color")
+            return []
 
-    Returns:
-        A list of SampledPoint objects, excluding points with the base color.
-    """
-    # Sample surface points
-    sampled_surface_points = sample_surface(mesh, n_samples, sample_color=True)
+        uv_coords = mesh.visual.uv
 
-    all_points = sampled_surface_points[0]
-    all_faces = sampled_surface_points[1]
-    all_colors = sampled_surface_points[2]
+        processed_points = []
+        for i in range(len(points)):
+            # Get face vertices
+            face = mesh.faces[face_indices[i]]
+            # Get UV coordinates for face vertices
+            face_uvs = uv_coords[face]
 
-    processed_points = []
-    for i in range(len(all_points)):
-        # Find closest color in palette
-        color = all_colors[i]
-        distances = np.linalg.norm(np.array(colors) - color, axis=1)
-        closest_color = colors[np.argmin(distances)]
+            # Use barycentric coordinates to interpolate UV coordinates
+            # For simplicity, just use the first UV coordinate of the face
+            uv = face_uvs[0]
 
-        # Skip base color points
-        if closest_color == base_color:
-            continue
+            # Convert UV to pixel coordinates
+            x = int(uv[0] * (texture_array.shape[1] - 1))
+            y = int((1 - uv[1]) * (texture_array.shape[0] - 1))  # Flip Y coordinate
 
-        # Create SampledPoint
-        point_coords = tuple(all_points[i])
-        point_normal = tuple(mesh.face_normals[all_faces[i]])
-        processed_points.append(
-            SampledPoint(
-                coordinates=point_coords,
-                color=closest_color,
-                normal=point_normal,
+            # Sample color from texture
+            pixel_color = texture_array[y, x]
+            if len(pixel_color) > 3:
+                pixel_color = pixel_color[:3]  # Take only RGB components
+
+            # Find closest color in palette
+            distances = [np.linalg.norm(np.array(c[:3]) - pixel_color) for c in colors]
+            closest_color = colors[np.argmin(distances)]
+
+            # Don't skip base color points anymore
+            point_coords = tuple(points[i])
+            point_normal = tuple(mesh.face_normals[face_indices[i]])
+
+            processed_points.append(
+                SampledPoint(
+                    coordinates=point_coords,
+                    color=closest_color,
+                    normal=point_normal,
+                )
             )
-        )
+
+            if i % 1000 == 0:
+                print(f"Processed {i}/{len(points)} points")
+    else:
+        print("No texture found, using default color")
+        processed_points = []
+        for i in range(len(points)):
+            point_coords = tuple(points[i])
+            point_normal = tuple(mesh.face_normals[face_indices[i]])
+            processed_points.append(
+                SampledPoint(
+                    coordinates=point_coords,
+                    color=base_color,
+                    normal=point_normal,
+                )
+            )
+
+    print(f"Processed {len(processed_points)} points")
+    # Print color distribution
+    color_counts = {}
+    for point in processed_points:
+        color_counts[point.color] = color_counts.get(point.color, 0) + 1
+    print("Color distribution:")
+    for color, count in color_counts.items():
+        print(f"Color {color}: {count} points")
 
     return processed_points
 
@@ -87,18 +130,7 @@ def cluster_points(
     eps: float = 0.0025 / 2,
     min_samples: int = 10,
 ) -> List[Tuple[List[SampledPoint], Color, bool]]:
-    """
-    Clusters points that are close to each other.
-
-    Args:
-        points: List of points to cluster
-        eps: Maximum distance between two samples for neighborhood
-        min_samples: Minimum number of samples in a neighborhood
-
-    Returns:
-        List of clusters, each containing a list of points, their color, and a flag indicating if the cluster is noise (i.e. points not in any cluster)
-    """
-    # Group points by color
+    """Clusters points that are close to each other."""
     color_groups = {}
     for point in points:
         if point.color not in color_groups:
@@ -107,23 +139,19 @@ def cluster_points(
 
     clusters_flat = []
     for color, color_points in color_groups.items():
-        # Extract point coordinates
         point_coords = np.array([p.coordinates for p in color_points])
 
-        # Perform DBSCAN clustering
         clustering = DBSCAN(eps=eps, min_samples=min_samples, n_jobs=-1).fit(
             point_coords
         )
         labels = clustering.labels_
 
-        # Group points by cluster label
         color_clusters = {}
         for i, label in enumerate(labels):
             if label not in color_clusters:
                 color_clusters[label] = []
             color_clusters[label].append(color_points[i])
 
-        # Flatten clusters
         for label, cluster_points in color_clusters.items():
             if cluster_points:
                 clusters_flat.append((cluster_points, color, label == -1))

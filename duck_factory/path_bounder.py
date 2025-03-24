@@ -357,9 +357,20 @@ class PathBounder:
                 adjusted_path.append((final_intersection, target_normal))
                 return adjusted_path
             else:
-                return [(self.get_intersection_with_obb(point, normal), normal)]
+                print("Normal is already pointing upwards")
+                path = [(point, normal)]
+                path.append((self.get_intersection_with_obb(point, normal), normal))
+                return path
 
-        start_adjusted_path = adjust_normal_and_get_intersection(*start)
+        start_point, start_normal = start
+        start_normal = -np.array(
+            start_normal
+        )  # Invert the normal to point towards the start point
+
+        start_adjusted_path = adjust_normal_and_get_intersection(
+            start_point, start_normal
+        )
+        # start_adjusted_path = adjust_normal_and_get_intersection(*start)
 
         end_point, end_normal = end
         end_normal = -np.array(
@@ -432,6 +443,7 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 def plot_path(
     mesh: Trimesh,
+    box,
     path: list[tuple[tuple[float, float, float], tuple[float, float, float]]],
     restricted_face: list[int] = None,
 ) -> None:  # pragma: no cover
@@ -444,9 +456,6 @@ def plot_path(
     """
     fig = plt.figure()
     ax = fig.add_subplot(111, projection="3d")
-
-    # box = mesh.bounding_box
-    box = mesh.bounding_box_oriented
 
     # Plot mesh bounding box
     obb_vertices = box.vertices
@@ -545,7 +554,8 @@ if __name__ == "__main__":  # pragma: no cover
     end_point = [0.0276, 0.11949, -0.0129]
     end_normal = (-0.42780, 0.84981, -0.307881)
 
-    restricted_face = [3, 8]
+    # restricted_face = [3, 8]
+    restricted_face = []
 
     path_with_orientation = path_finder.compute_path_with_orientation(
         start=(start_point, start_normal),
@@ -556,7 +566,9 @@ if __name__ == "__main__":  # pragma: no cover
     print(f"Computed path with {len(path_with_orientation)} points")
     print(path_with_orientation)
 
-    plot_path(mesh, path_with_orientation, restricted_face=restricted_face)
+    plot_path(
+        mesh, path_finder.box, path_with_orientation, restricted_face=restricted_face
+    )
 
     # #  Generate two paths example values
     # path1 = [

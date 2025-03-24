@@ -290,9 +290,6 @@ class PathBounder:
                 # Add the last point with the last computed normal
                 path_with_normals.append((result_path[-1], previous_normal))
 
-                print(f"Found path with {len(path_with_normals)} points")
-                print(path_with_normals)
-
                 return path_with_normals
 
             if current in visited:
@@ -368,7 +365,6 @@ class PathBounder:
                 adjusted_path.append((final_intersection, target_normal))
                 return adjusted_path
             else:
-                print("Normal is already pointing upwards")
                 path = [(point, normal)]
                 path.append((self.get_intersection_with_obb(point, normal), normal))
                 return path

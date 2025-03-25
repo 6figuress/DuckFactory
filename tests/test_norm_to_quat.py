@@ -102,7 +102,7 @@ def test_norm_to_quat_sphere():
             
             # Get quaternion from normal
             quat = norm_to_quat(normal)
-            
+
             # Check if quaternion is normalized
             assert np.isclose(np.linalg.norm(quat), 1.0)
             

@@ -55,7 +55,7 @@ def mesh_to_paths(
     """
     # Dither the mesh's texture
     img = mesh.visual.material.image
-    ditherer = Dither(factor=0.1, algorithm="fs", nc=2)
+    ditherer = Dither(factor=1, algorithm="fs", nc=2)
     img = ditherer.apply_dithering(img.convert("RGB"))
     mesh.visual.material.image = img
 
@@ -75,21 +75,19 @@ def mesh_to_paths(
     # TODO: sample duck + stand
     mesh_points = sample_surface(mesh, n_samples, sample_color=False)[0]
 
-    counter = 0
     valid_points = []
     for point in sampled_points:
-        counter += 1
 
         # Convert from y-up, x-forward, z-right to z-up, x-forward, y-left
         point.coordinates = (
-            point.coordinates[0],
+            -point.coordinates[0],
             point.coordinates[2],
-            -point.coordinates[1],
+            point.coordinates[1],
         )
         point.normal = (
-            point.normal[0],
+            -point.normal[0],
             point.normal[2],
-            -point.normal[1],
+            point.normal[1],
         )
 
         # Find a valid orientation for the point
@@ -106,7 +104,7 @@ def mesh_to_paths(
         valid_points.append(point)
 
     # Cluster the points by proximity and color
-    clusters = cluster_points(valid_points)
+    clusters = cluster_points(valid_points, distance_eps=max_dist)
 
     # Compute the paths for each cluster, and store lists of paths by color
     color_paths = defaultdict(list)
@@ -115,11 +113,11 @@ def mesh_to_paths(
             # The noise clusters contain points that we don't want to connect
             # Create a new path for each point
             for point in points:
-                # color_paths[color].append([(point.coordinates, point.normal)])
+                # color_paths[color].append([point])
                 pass
         else:
             # Connect the points in the cluster to form paths
-            path_finder = PathFinder(points, max_dist)
+            path_finder = PathFinder(points, max_dist / 2)
             paths_positions = path_finder.find_paths()
 
             for path in paths_positions:
@@ -139,7 +137,9 @@ def mesh_to_paths(
         prepped_paths = prepped_paths + [[home_point]]
 
         # Merge the paths
-        merged = bounder.merge_all_path(prepped_paths, restricted_face=[3, 8])
+        merged = bounder.merge_all_path(prepped_paths)
+
+        merged = [(pos, norm) for pos, norm in merged if norm is not None]
 
         # Convert normals to quaternions
         converted_path = [(pos, norm_to_quat(norm)) for pos, norm in merged]
@@ -216,23 +216,68 @@ def norm_to_quat(normal: Normal) -> Quaternion:
     # normalize the quaternion
     quat = quat / np.linalg.norm(quat)
 
+    assert not np.isclose(quat, 1, atol=1e-3).any(), "Quaternion is too close to 1"
+    assert not np.isclose(quat, -1, atol=1e-3).any(), "Quaternion is too close to -1"
+
     return quat
 
 
 if __name__ == "__main__":  # pragma: no cover
-    mesh = load_mesh("cube.obj")
-    paths = mesh_to_paths(mesh, max_dist=0.024)
+    mesh = load_mesh("cube_8mm.obj")
+    paths = mesh_to_paths(mesh, max_dist=0.0024 * 2.0, n_samples=200_000)
 
-    for color, path in paths:
-        print(f"Color: {color}")
-        for point in path:
-            print(f"Point: {point}")
-        print()
+    # for color, path in paths:
+    #     print(f"Color: {color}")
+    #     for point in path:
+    #         print(f"Point: {point}")
+    #     print()
 
     print(f"Number of paths: {len(paths)}")
     print(f"Number of points: {sum([len(path) for _, path in paths])}")
+
+    # convert all numpy arrays and tuples to lists
+    paths = [
+        (color, [(list(pos), list(quat)) for pos, quat in path])
+        for color, path in paths
+    ]
+
+    # filter out positions where either the position or the quaternion is NaN
+    paths = [
+        (
+            color,
+            [
+                (p, q)
+                for p, q in path
+                if not np.isnan(p).any() and not np.isnan(q).any()
+            ],
+        )
+        for color, path in paths
+    ]
 
     with open("paths.json", "w") as f:
         json.dump(paths, f, indent=4)
 
     print("Paths exported to paths.json")
+
+    import matplotlib.pyplot as plt
+    from mpl_toolkits.mplot3d import Axes3D
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection="3d")
+
+    for color, path in paths:
+        coords = [pos for pos, _ in path]
+        ax.plot(
+            [c[0] for c in coords],
+            [c[1] for c in coords],
+            [c[2] for c in coords],
+            label=str(color),
+        )
+
+    ax.legend()
+    ax.set_xlabel("X")
+    ax.set_ylabel("Y")
+    ax.set_zlabel("Z")
+    ax.set_aspect("equal")
+
+    plt.show()

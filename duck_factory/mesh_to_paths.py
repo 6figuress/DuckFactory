@@ -208,16 +208,13 @@ def norm_to_quat(normal: Normal) -> Quaternion:
 
     # if one of the 4 components of the quat is too close to +/- 1, there's a risk for it to mess up the IK
     # so set these components to a value close to 1
-    close_to_pos_1 = np.isclose(quat, 1, atol=1e-3)
-    close_to_min_1 = np.isclose(quat, -1, atol=1e-3)
+    close_to_pos_1 = np.isclose(quat, 1)
+    close_to_min_1 = np.isclose(quat, -1)
     quat[close_to_pos_1] = 9.9e-1
     quat[close_to_min_1] = -9.9e-1
 
-    # normalize the quaternion
-    quat = quat / np.linalg.norm(quat)
-
-    assert not np.isclose(quat, 1, atol=1e-3).any(), "Quaternion is too close to 1"
-    assert not np.isclose(quat, -1, atol=1e-3).any(), "Quaternion is too close to -1"
+    assert not np.isclose(quat, 1).any(), "Quaternion is too close to 1"
+    assert not np.isclose(quat, -1).any(), "Quaternion is too close to -1"
 
     return quat
 

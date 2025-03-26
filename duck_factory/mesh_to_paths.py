@@ -77,19 +77,6 @@ def mesh_to_paths(
 
     valid_points = []
     for point in sampled_points:
-
-        # Convert from y-up, x-forward, z-right to z-up, x-forward, y-left
-        point.coordinates = (
-            -point.coordinates[0],
-            point.coordinates[2],
-            point.coordinates[1],
-        )
-        point.normal = (
-            -point.normal[0],
-            point.normal[2],
-            point.normal[1],
-        )
-
         # Find a valid orientation for the point
         valid, new_norm = path_analyzer.find_valid_orientation(
             point.coordinates, point.normal, mesh_points
@@ -140,6 +127,15 @@ def mesh_to_paths(
         merged = bounder.merge_all_path(prepped_paths)
 
         merged = [(pos, norm) for pos, norm in merged if norm is not None]
+
+        # Convert from y-up, x-forward, z-right to z-up, x-forward, y-left
+        merged = [
+            (
+                (-pos[0], pos[2], pos[1]),
+                (-norm[0], norm[2], norm[1]),
+            )
+            for pos, norm in merged
+        ]
 
         # Convert normals to quaternions
         converted_path = [(pos, norm_to_quat(norm)) for pos, norm in merged]
@@ -221,7 +217,7 @@ def norm_to_quat(normal: Normal) -> Quaternion:
 
 if __name__ == "__main__":  # pragma: no cover
     mesh = load_mesh("cube_8mm.obj")
-    paths = mesh_to_paths(mesh, max_dist=0.0024 * 2.0, n_samples=200_000)
+    paths = mesh_to_paths(mesh, max_dist=0.0024, n_samples=200_000)
 
     # for color, path in paths:
     #     print(f"Color: {color}")

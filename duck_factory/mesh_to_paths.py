@@ -104,7 +104,7 @@ def mesh_to_paths(
                 pass
         else:
             # Connect the points in the cluster to form paths
-            path_finder = PathFinder(points, max_dist / 2)
+            path_finder = PathFinder(points, max_dist)
             paths_positions = path_finder.find_paths()
 
             for path in paths_positions:
@@ -113,7 +113,7 @@ def mesh_to_paths(
     # Merge the paths for each color by inserting paths between them
     rpaths = []
     for color, paths in color_paths.items():
-        bounder = PathBounder(mesh, path_analyzer, mesh_points)
+        bounder = PathBounder(mesh, path_analyzer, mesh_points, bbox_scale=2)
 
         # Convert paths to position-normal format
         prepped_paths = [
@@ -121,7 +121,7 @@ def mesh_to_paths(
         ]
 
         # Finish the path at the home point
-        prepped_paths = prepped_paths + [[home_point]]
+        # prepped_paths = prepped_paths + [[home_point]]
 
         # Merge the paths
         merged = bounder.merge_all_path(prepped_paths)

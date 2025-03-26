@@ -50,10 +50,15 @@ def mesh_to_paths(
     n_samples: int = 50_000,
     max_dist: float = 0.1,
     home_point: tuple[Point, Normal] = ((0, 0, 0.25), (0, 0, -1)),
+    scale_factor: float = 1/18
 ) -> list[Path]:
     """
     Do the full conversion from a textured mesh to a list of IK-ready paths.
     """
+    # Rescale the mesh
+    mesh.vertices *= scale_factor
+    home_point = ((0, 0, 0.25 * scale_factor), (0, 0, -1))
+
     # If the mesh has no color information, try to add some
     if not hasattr(mesh.visual, "vertex_colors"):
         if hasattr(mesh.visual.material, "baseColorFactor"):
@@ -199,7 +204,7 @@ def norm_to_quat(normal: Normal) -> Quaternion:
 
 
 if __name__ == "__main__":  # pragma: no cover
-    mesh = load_mesh("duck.obj")
+    mesh = load_mesh("rubber_duck.glb")
     print(f"Loaded mesh with {len(mesh.vertices)} vertices")
     print(f"Mesh has vertex colors: {hasattr(mesh.visual, 'vertex_colors')}")
     print(f"Mesh has material: {hasattr(mesh.visual, 'material')}")
@@ -221,7 +226,7 @@ if __name__ == "__main__":  # pragma: no cover
                 texture.save("texture.png")
                 print("Saved texture to texture.png")
 
-    paths = mesh_to_paths(mesh, n_samples=50000, max_dist=0.024)
+    paths = mesh_to_paths(mesh, n_samples=5000, max_dist=0.024)
 
     print("\nProcessing complete:")
     print(f"Number of paths: {len(paths)}")
@@ -237,7 +242,23 @@ if __name__ == "__main__":  # pragma: no cover
             print(f"First point: {path[0]}")
             print(f"Last point: {path[-1]}")
 
+    def convert_paths_for_json(paths: list) -> list[Path]:
+        """Convert NumPy arrays in paths to regular Python lists."""
+        converted_paths = []
+        for color, path in paths:
+            converted_path = []
+            for position, quaternion in path:
+                # Convert position coordinates to regular floats
+                converted_position = tuple(float(x) for x in position)
+                # Convert quaternion to regular floats
+                converted_quaternion = tuple(float(x) for x in quaternion)
+                converted_path.append((converted_position, converted_quaternion))
+            converted_paths.append((tuple(color), converted_path))
+        return converted_paths
+
+    # Replace the JSON dump section with:
     with open("paths.json", "w") as f:
-        json.dump(paths, f, indent=4)
+        converted_paths = convert_paths_for_json(paths)
+        json.dump(converted_paths, f, indent=4)
 
     print("\nPaths exported to paths.json")

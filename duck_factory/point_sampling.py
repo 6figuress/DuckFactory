@@ -27,7 +27,14 @@ def get_texture(mesh: trimesh.Trimesh):
 
 @dataclass
 class SampledPoint:
-    """Represents a point sampled from a mesh surface with additional metadata."""
+    """
+    Represents a point sampled from a mesh surface with additional metadata.
+
+    Attributes:
+        coordinates: 3D coordinates of the point
+        color: RGB color of the point
+        normal: Surface normal at the point
+    """
 
     coordinates: Point
     color: Color
@@ -40,7 +47,21 @@ def sample_mesh_points(
     colors: List[Color],
     n_samples: int = 500_000,
 ) -> List[SampledPoint]:
-    """Samples points from the surface of a mesh and assigns them to the closest color."""
+    """
+    Samples points from the surface of a mesh and assigns them to the closest color in the palette.
+
+    Notes:  Points with the base color are ignored.
+            As some points may be discarded after sampling, the number of sampled points may be less than n_samples.
+
+    Args:
+        mesh: The mesh to sample points from.
+        base_color: The base color of the mesh. Points with this color will be ignored.
+        colors: A list of colors in the palette.
+        n_samples: The number of points to sample.
+
+    Returns:
+        A list of SampledPoint objects, excluding points with the base color.
+    """
     # Sample points and faces (without color initially)
     points, face_indices = sample_surface(mesh, n_samples, sample_color=False)
 
@@ -130,7 +151,18 @@ def cluster_points(
     eps: float = 0.005,  # Reduced from 0.0025/2
     min_samples: int = 5,  # Reduced from 10
 ) -> List[Tuple[List[SampledPoint], Color, bool]]:
-    """Clusters points that are close to each other."""
+    """
+    Clusters points that are close to each other.
+
+    Args:
+        points: List of points to cluster
+        eps: Maximum distance between two samples for neighborhood
+        min_samples: Minimum number of samples in a neighborhood
+
+    Returns:
+        List of clusters, each containing a list of points, their color, and a flag indicating if the cluster is noise (i.e. points not in any cluster)
+    """
+    # Group points by color
     print(f"Starting clustering with {len(points)} points")
 
     color_groups = {}
@@ -142,8 +174,10 @@ def cluster_points(
     clusters_flat = []
     for color, color_points in color_groups.items():
         print(f"Clustering {len(color_points)} points of color {color}")
+        # Extract point coordinates
         point_coords = np.array([p.coordinates for p in color_points])
 
+        # Perform DBSCAN clustering
         clustering = DBSCAN(eps=eps, min_samples=min_samples, n_jobs=-1).fit(
             point_coords
         )
@@ -156,12 +190,14 @@ def cluster_points(
             f"Found {n_clusters} clusters and {n_noise} noise points for color {color}"
         )
 
+        # Group points by cluster label
         color_clusters = {}
         for i, label in enumerate(labels):
             if label not in color_clusters:
                 color_clusters[label] = []
             color_clusters[label].append(color_points[i])
 
+        # Flatten clusters
         for label, cluster_points in color_clusters.items():
             if cluster_points:  # Include noise points (-1 label)
                 clusters_flat.append((cluster_points, color, label == -1))

@@ -54,6 +54,18 @@ def mesh_to_paths(
 ) -> list[Path]:
     """
     Do the full conversion from a textured mesh to a list of IK-ready paths.
+
+    Convert a mesh to a list of paths, each path being a 3d position and quaternion (x, y, z, w)
+        and being of a certain color.
+
+        Args:
+            mesh: The mesh to convert to paths
+            n_samples: The number of samples to take from the mesh
+            max_dist: The maximum distance between two samples for neighborhood
+            home_point: The point where the robot should start and end its paths, represented by a point and a normal
+
+        Returns:
+            List of paths, each containing a color and a list of PathPosition (point and quaternion)
     """
     # Rescale the mesh
     mesh.vertices *= scale_factor
@@ -80,6 +92,7 @@ def mesh_to_paths(
         num_vectors=12,
     )
 
+    # TODO: sample duck + stand
     mesh_points = sample_surface(mesh, n_samples, sample_color=False)[0]
 
     counter = 0
@@ -107,6 +120,7 @@ def mesh_to_paths(
         if valid:
             point.normal = new_norm
         else:
+            # Can't find a way to reach this point, skip it
             continue
 
         valid_points.append(point)
@@ -121,10 +135,13 @@ def mesh_to_paths(
             f"Processing cluster of {len(points)} points with color {color} (noise: {is_noise})"
         )
         if is_noise:
-            # Create individual paths for noise points
+            # The noise clusters contain points that we don't want to connect
+
+            # Create a new path for each point
             for point in points:
                 color_paths[color].append([point])
         else:
+            # Connect the points in the cluster to form paths
             path_finder = PathFinder(points, max_dist)
             paths_positions = path_finder.find_paths()
 
@@ -162,13 +179,33 @@ def mesh_to_paths(
                 if path and path != [home_point]:
                     converted_path = [(pos, norm_to_quat(norm)) for pos, norm in path]
                     rpaths.append((color, converted_path))
+    # TODO: Merge the different colors paths together with pen-switching
+
     return rpaths
 
 
 def norm_to_quat(normal: Normal) -> Quaternion:
-    """Convert a normal vector to a quaternion."""
+    """
+    Convert a normal vector to a quaternion, in the robot/simulator coordinate system.
+
+    The normal vector is to be in the same coordinate system as the robot/simulator (z-up, x-forward, y-left),
+    and it should be the normal of the surface at which the robot should point (not the direction the robot should point to).
+
+    Args:
+        normal: The normal vector to convert
+
+    Returns:
+        The quaternion representing the rotation to align the z-axis with the normal
+
+    Raises:
+        ValueError: If the resulting quaternion contains NaNs
+    """
+
+
+    # normalize the normal, just to be sure
     normal = (-normal[0], -normal[1], -normal[2])
 
+    # handle edge cases where the normal is parallel to the z-axis
     if np.allclose(normal, [0, 0, 0]):
         raise ValueError("Cannot normalize a zero vector (normal is [0, 0, 0])")
 
@@ -181,23 +218,36 @@ def norm_to_quat(normal: Normal) -> Quaternion:
         quat = (0, 9.9e-1, 0, 5.06e-4)
         return quat / np.linalg.norm(quat)
 
+    # the hand of the robot points towards the positive z-axis, so
+    # we want the rotation that aligns the z-axis with our normal
+
+    # find the rotation axis which is perpendicular to both the z-axis and the normal
+    # (i.e. the axis perpendicular to the plane they form)
     rotation_axis = np.cross((0, 0, 1), normal)
     rotation_axis = rotation_axis / np.linalg.norm(rotation_axis)
 
+    # find the rotation angle between the z-axis and the normal
+    # this is the angle to rotate around the rotation axis
+    # dot(a, b) = |a| * |b| * cos(angle) = cos(angle) because |a| = |b| = 1
     cos_angle = np.dot([0, 0, 1], normal)
     angle = np.arccos(np.clip(cos_angle, -1.0, 1.0))
 
+    # convert the rotation to a quaternion
     r = Rotation.from_rotvec(angle * rotation_axis)
     quat = r.as_quat()
 
+    # fail if the quat contains NaNs
     if np.isnan(quat).any():
         raise ValueError("Quaternion contains NaNs")
 
+    # if one of the 4 components of the quat is too close to +/- 1, there's a risk for it to mess up the IK
+    # so set these components to a value close to 1
     close_to_pos_1 = np.isclose(quat, 1, atol=1e-3)
     close_to_min_1 = np.isclose(quat, -1, atol=1e-3)
     quat[close_to_pos_1] = 9.9e-1
     quat[close_to_min_1] = -9.9e-1
 
+    # normalize the quaternion
     quat = quat / np.linalg.norm(quat)
 
     return quat
@@ -226,6 +276,7 @@ if __name__ == "__main__":  # pragma: no cover
                 texture.save("texture.png")
                 print("Saved texture to texture.png")
 
+    # Increase number of samples and adjust max_dist
     paths = mesh_to_paths(mesh, n_samples=5000, max_dist=0.024)
 
     print("\nProcessing complete:")

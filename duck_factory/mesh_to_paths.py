@@ -57,12 +57,25 @@ def modify_mesh_position(mesh):
     return mesh
 
 
+DEFAULT_DITHER = Dither(factor=1, algorithm="fs", nc=2)
+DEFAULT_PATH_ANALYZER = PathAnalyzer(
+    tube_length=5e1, diameter=2e-2, cone_height=1e-2, step_angle=36, num_vectors=12
+)
+
+
+DISPLAY_ORIENTATION = True
+
+
 def mesh_to_paths(
     mesh: Trimesh,
     n_samples: int = 50_000,
     max_dist: float = 0.1,
     home_point: tuple[Point, Normal] = ((0, 0, 0.25), (0, 0, -1)),
     verbose: bool = False,
+    ditherer: Dither = None,
+    path_analyzer: PathAnalyzer = None,
+    bbox_scale: float = 2,
+    nz_threshold: float = -1,
 ) -> list[Path]:
     """
     Do the full conversion from a textured mesh to a list of IK-ready paths.
@@ -81,12 +94,16 @@ def mesh_to_paths(
     """
     mesh = modify_mesh_position(mesh)
 
+    if ditherer is None:
+        ditherer = DEFAULT_DITHER
+    if path_analyzer is None:
+        path_analyzer = DEFAULT_PATH_ANALYZER
+
     if verbose:
         dither_start = time.time()
         print("Starting dithering")
     # Dither the mesh's texture
     img = mesh.visual.material.image
-    ditherer = Dither(factor=1, algorithm="fs", nc=2)
     img = ditherer.apply_dithering(img.convert("RGB"))
     mesh.visual.material.image = img
     if verbose:
@@ -103,14 +120,6 @@ def mesh_to_paths(
         print(f"Sampling took {time.time() - start_sampling:.2f} seconds")
         print("Starting sample surface")
         start_surface = time.time()
-
-    path_analyzer = PathAnalyzer(
-        tube_length=5e1,
-        diameter=2e-2,
-        cone_height=1e-2,
-        step_angle=36,
-        num_vectors=12,
-    )
 
     # TODO: sample duck + stand
     mesh_points = sample_surface(mesh, n_samples, sample_color=False)[0]
@@ -173,7 +182,11 @@ def mesh_to_paths(
     rpaths = []
     for color, paths in color_paths.items():
         bounder = PathBounder(
-            mesh, path_analyzer, mesh_points, bbox_scale=2, nz_threshold=-1
+            mesh,
+            path_analyzer,
+            mesh_points,
+            bbox_scale=bbox_scale,
+            nz_threshold=nz_threshold,
         )
 
         # Convert paths to position-normal format
@@ -189,16 +202,18 @@ def mesh_to_paths(
         ]
 
         # Finish the path at the home point
-        # prepped_paths = prepped_paths + [[home_point]]
+        prepped_paths = [[home_point]] + prepped_paths + [[home_point]]
 
         # Merge the paths
         merged = bounder.merge_all_path(prepped_paths)
 
         merged = [(pos, norm) for pos, norm in merged if norm is not None]
 
-        # Convert normals to quaternions
-        converted_path = [(pos, norm_to_quat(norm)) for pos, norm in merged]
-        # converted_path = merged
+        if DISPLAY_ORIENTATION:
+            converted_path = merged
+        else:
+            # Convert normals to quaternions
+            converted_path = [(pos, norm_to_quat(norm)) for pos, norm in merged]
 
         rpaths.append((color, converted_path))
 
@@ -282,7 +297,11 @@ def norm_to_quat(normal: Normal) -> Quaternion:
 if __name__ == "__main__":  # pragma: no cover
     mesh = load_mesh("cube_8mm.obj")
 
-    paths = mesh_to_paths(mesh, max_dist=0.0024, n_samples=50_000, verbose=True)
+    dither = Dither(factor=0.1, algorithm="fs", nc=2)
+
+    paths = mesh_to_paths(
+        mesh, max_dist=0.0024, n_samples=50_000, verbose=True, ditherer=dither
+    )
 
     # for color, path in paths:
     #     print(f"Color: {color}")
@@ -346,24 +365,25 @@ if __name__ == "__main__":  # pragma: no cover
         start_point, _ = path[0]
         end_point, _ = path[-1]
 
-        # To be able to display the normal vectors, we need to disable the conversion to quaternions
-        # length = 0.05
-        # for pos, normal in path:
-        #     # Draw the normal
-        #     end_pos = (
-        #         np.array(pos) - np.array(normal) * length
-        #     )  # Ending at the correct point
-        #     ax.quiver(
-        #         end_pos[0],
-        #         end_pos[1],
-        #         end_pos[2],
-        #         normal[0],
-        #         normal[1],
-        #         normal[2],
-        #         color="magenta",
-        #         length=length,
-        #         normalize=True,
-        #     )
+        if DISPLAY_ORIENTATION:
+            # To be able to display the normal vectors, we need to disable the conversion to quaternions
+            length = 0.05
+            for pos, normal in path:
+                # Draw the normal
+                end_pos = (
+                    np.array(pos) - np.array(normal) * length
+                )  # Ending at the correct point
+                ax.quiver(
+                    end_pos[0],
+                    end_pos[1],
+                    end_pos[2],
+                    normal[0],
+                    normal[1],
+                    normal[2],
+                    color="magenta",
+                    length=length,
+                    normalize=True,
+                )
 
     ax.legend()
     ax.set_xlabel("X")

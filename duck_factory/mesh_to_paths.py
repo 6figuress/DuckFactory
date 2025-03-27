@@ -99,15 +99,25 @@ def mesh_to_paths(
     if verbose:
         dither_start = time.time()
         print("Starting dithering")
-    # Dither the mesh's texture
-    img = mesh.visual.material.image
+
+    # Get texture from the mesh, handling both PBR and regular materials
+    img = get_texture(mesh)
+
+    # Dither the texture
     ditherer = Dither(factor=1, algorithm="fs", nc=2)
-    img = ditherer.apply_dithering(img.convert("RGB"))
-    mesh.visual.material.image = img
+    dithered_img = ditherer.apply_dithering(img.convert("RGB"))
+
+    # Update the texture in the mesh
+    if hasattr(mesh.visual.material, "baseColorTexture"):
+        mesh.visual.material.baseColorTexture = dithered_img
+    else:
+        mesh.visual.material.image = dithered_img
+
     if verbose:
         print(f"Dithering took {time.time() - dither_start:.2f} seconds")
         print("Starting mesh sampling")
         start_sampling = time.time()
+
     # Rescale the mesh
     mesh.vertices *= scale_factor
     home_point = ((0, 0, 0.25 * scale_factor), (0, 0, -1))

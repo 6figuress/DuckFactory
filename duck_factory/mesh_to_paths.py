@@ -1,21 +1,23 @@
-import numpy as np
-from trimesh import Trimesh, load_mesh
-from trimesh.sample import sample_surface
-from duck_factory.dither_class import Dither
-from duck_factory.reachable_points import PathAnalyzer
-from duck_factory.points_to_paths import PathFinder
-from duck_factory.point_sampling import (
-    sample_mesh_points,
-    cluster_points,
-    Point,
-    Color,
-)
-from duck_factory.path_bounder import PathBounder
-from scipy.spatial.transform import Rotation
 import json
+import time
 from collections import defaultdict
 
-import time
+import numpy as np
+from PIL import Image
+from scipy.spatial.transform import Rotation
+from trimesh import Trimesh, load_mesh
+from trimesh.sample import sample_surface
+
+from duck_factory.dither_class import Dither
+from duck_factory.path_bounder import PathBounder
+from duck_factory.point_sampling import (
+    Color,
+    Point,
+    cluster_points,
+    sample_mesh_points,
+)
+from duck_factory.points_to_paths import PathFinder
+from duck_factory.reachable_points import PathAnalyzer
 
 Normal = tuple[float, float, float]
 Quaternion = tuple[float, float, float, float]
@@ -57,27 +59,40 @@ def modify_mesh_position(mesh):
     return mesh
 
 
+def get_texture(mesh: Trimesh):
+    """Get texture from mesh, handling both PBR and regular materials."""
+    if hasattr(mesh.visual.material, "baseColorTexture"):
+        return mesh.visual.material.baseColorTexture
+    elif hasattr(mesh.visual, "material") and hasattr(
+        mesh.visual.material, "image"
+    ):
+        return mesh.visual.material.image
+    else:
+        return Image.new("RGB", (256, 256), color=BASE_COLOR[:3])
+
+
 def mesh_to_paths(
     mesh: Trimesh,
     n_samples: int = 50_000,
     max_dist: float = 0.1,
     home_point: tuple[Point, Normal] = ((0, 0, 0.25), (0, 0, -1)),
     verbose: bool = False,
+    scale_factor: float = 1 / 18,
 ) -> list[Path]:
     """
     Do the full conversion from a textured mesh to a list of IK-ready paths.
 
     Convert a mesh to a list of paths, each path being a 3d position and quaternion (x, y, z, w)
-    and being of a certain color.
+        and being of a certain color.
 
     Args:
-        mesh: The mesh to convert to paths
-        n_samples: The number of samples to take from the mesh
-        max_dist: The maximum distance between two samples for neighborhood
-        home_point: The point where the robot should start and end its paths, represented by a point and a normal
+            mesh: The mesh to convert to paths
+            n_samples: The number of samples to take from the mesh
+            max_dist: The maximum distance between two samples for neighborhood
+            home_point: The point where the robot should start and end its paths, represented by a point and a normal
 
     Returns:
-        List of paths, each containing a color and a list of PathPosition (point and quaternion)
+            List of paths, each containing a color and a list of PathPosition (point and quaternion)
     """
     mesh = modify_mesh_position(mesh)
 
@@ -93,6 +108,17 @@ def mesh_to_paths(
         print(f"Dithering took {time.time() - dither_start:.2f} seconds")
         print("Starting mesh sampling")
         start_sampling = time.time()
+    # Rescale the mesh
+    mesh.vertices *= scale_factor
+    home_point = ((0, 0, 0.25 * scale_factor), (0, 0, -1))
+
+    # If the mesh has no color information, try to add some
+    if not hasattr(mesh.visual, "vertex_colors"):
+        if hasattr(mesh.visual.material, "baseColorFactor"):
+            color = mesh.visual.material.baseColorFactor
+        else:
+            color = BASE_COLOR
+        mesh.visual.vertex_colors = np.tile(color, (len(mesh.vertices), 1))
 
     # Sample points from the mesh and cluster them by proximity
     sampled_points = sample_mesh_points(
@@ -136,7 +162,9 @@ def mesh_to_paths(
         valid_points.append(point)
 
     if verbose:
-        print(f"Point processing took {time.time() - start_processing:.2f} seconds")
+        print(
+            f"Point processing took {time.time() - start_processing:.2f} seconds"
+        )
         print("Starting clustering")
         start_clustering = time.time()
 
@@ -150,17 +178,21 @@ def mesh_to_paths(
     # Compute the paths for each cluster, and store lists of paths by color
     color_paths = defaultdict(list)
     for points, color, is_noise in clusters:
+        print(
+            f"Processing cluster of {len(points)} points with color {color} (noise: {is_noise})"
+        )
         if is_noise:
             # The noise clusters contain points that we don't want to connect
+
             # Create a new path for each point
             for point in points:
-                # color_paths[color].append([point])
-                pass
+                color_paths[color].append([point])
         else:
             # Connect the points in the cluster to form paths
             path_finder = PathFinder(points, max_dist)
             paths_positions = path_finder.find_paths()
 
+            print(f"Found {len(paths_positions)} paths for cluster")
             for path in paths_positions:
                 color_paths[color].append(path)
 
@@ -172,6 +204,10 @@ def mesh_to_paths(
     # Merge the paths for each color by inserting paths between them
     rpaths = []
     for color, paths in color_paths.items():
+        print(f"Processing {len(paths)} paths of color {color}")
+        if not paths:
+            continue
+
         bounder = PathBounder(
             mesh, path_analyzer, mesh_points, bbox_scale=2, nz_threshold=-1
         )
@@ -192,19 +228,31 @@ def mesh_to_paths(
         # prepped_paths = prepped_paths + [[home_point]]
 
         # Merge the paths
-        merged = bounder.merge_all_path(prepped_paths)
+        try:
+            merged = bounder.merge_all_path(prepped_paths)
 
-        merged = [(pos, norm) for pos, norm in merged if norm is not None]
+            merged = [(pos, norm) for pos, norm in merged if norm is not None]
 
-        # Convert normals to quaternions
-        converted_path = [(pos, norm_to_quat(norm)) for pos, norm in merged]
-        # converted_path = merged
+            # Convert normals to quaternions
+            converted_path = [(pos, norm_to_quat(norm)) for pos, norm in merged]
+            # converted_path = merged
 
-        rpaths.append((color, converted_path))
+            rpaths.append((color, converted_path))
+        except Exception as e:
+            print(f"Error merging paths for color {color}: {e}")
+            # Try to salvage what we can by creating individual paths
+            for path in prepped_paths:
+                if path and path != [home_point]:
+                    converted_path = [
+                        (pos, norm_to_quat(norm)) for pos, norm in path
+                    ]
+                    rpaths.append((color, converted_path))
 
     if verbose:
         print(f"Path merging took {time.time() - start_merge:.2f} seconds")
-        print(f"Finished path computation in {time.time() - dither_start:.2f} seconds")
+        print(
+            f"Finished path computation in {time.time() - dither_start:.2f} seconds"
+        )
 
     # TODO: Merge the different colors paths together with pen-switching
 
@@ -230,13 +278,12 @@ def norm_to_quat(normal: Normal) -> Quaternion:
     # the normal points "away" from the point, we want our robot to point towards it
     # normal = (-normal[0], -normal[1], -normal[2])
 
+    # handle edge cases where the normal is parallel to the z-axis
     if np.allclose(normal, [0, 0, 0]):
         raise ValueError("Cannot normalize a zero vector (normal is [0, 0, 0])")
 
-    # normalize the normal, just to be sure
     normal = normal / np.linalg.norm(normal)
 
-    # handle edge cases where the normal is parallel to the z-axis
     if np.allclose(normal, [0, 0, 1]):
         quat = (0, 5.06e-4, 0, 9.9e-1)
         return quat / np.linalg.norm(quat)
@@ -280,18 +327,35 @@ def norm_to_quat(normal: Normal) -> Quaternion:
 
 
 if __name__ == "__main__":  # pragma: no cover
-    mesh = load_mesh("cube_8mm.obj")
+    mesh = load_mesh("rubber_duck.glb")
+    print(f"Loaded mesh with {len(mesh.vertices)} vertices")
+    print(f"Mesh has vertex colors: {hasattr(mesh.visual, 'vertex_colors')}")
+    print(f"Mesh has material: {hasattr(mesh.visual, 'material')}")
+    print(f"Mesh has UV coordinates: {hasattr(mesh.visual, 'uv')}")
+    if hasattr(mesh.visual, "material"):
+        print(f"Material type: {type(mesh.visual.material)}")
+        if hasattr(mesh.visual.material, "baseColorFactor"):
+            print(f"Base color factor: {mesh.visual.material.baseColorFactor}")
+        if hasattr(mesh.visual.material, "baseColorTexture"):
+            print(
+                f"Has base color texture: {mesh.visual.material.baseColorTexture is not None}"
+            )
+            if mesh.visual.material.baseColorTexture is not None:
+                texture = mesh.visual.material.baseColorTexture
+                print(f"Texture type: {type(texture)}")
+                if hasattr(texture, "size"):
+                    print(f"Texture size: {texture.size}")
+                # Save texture for inspection
+                texture.save("texture.png")
+                print("Saved texture to texture.png")
 
-    paths = mesh_to_paths(mesh, max_dist=0.0024, n_samples=50_000, verbose=True)
+    # Increase number of samples and adjust max_dist
+    paths = mesh_to_paths(mesh, n_samples=5000, max_dist=0.024)
 
-    # for color, path in paths:
-    #     print(f"Color: {color}")
-    #     for point in path:
-    #         print(f"Point: {point}")
-    #     print()
-
+    print("\nProcessing complete:")
     print(f"Number of paths: {len(paths)}")
-    print(f"Number of points: {sum([len(path) for _, path in paths])}")
+    total_points = sum([len(path[1]) for path in paths])
+    print(f"Number of points: {total_points}")
 
     # convert all numpy arrays and tuples to lists
     paths = [
@@ -331,7 +395,9 @@ if __name__ == "__main__":  # pragma: no cover
     for i, face in enumerate(obb_faces):
         color = "lightblue"
         ax.add_collection3d(
-            Poly3DCollection([face], alpha=0.3, edgecolor="black", facecolors=color)
+            Poly3DCollection(
+                [face], alpha=0.3, edgecolor="black", facecolors=color
+            )
         )
 
     for color, path in paths:

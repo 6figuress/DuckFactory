@@ -2,20 +2,33 @@ import json
 import time
 from collections import defaultdict
 
+import json
+import time
+from collections import defaultdict
+
 import numpy as np
+from PIL import Image
+from scipy.spatial.transform import Rotation
 from PIL import Image
 from scipy.spatial.transform import Rotation
 from trimesh import Trimesh, load_mesh
 from trimesh.sample import sample_surface
 
+
 from duck_factory.dither_class import Dither
+from duck_factory.path_bounder import PathBounder
 from duck_factory.path_bounder import PathBounder
 from duck_factory.point_sampling import (
     Color,
     Point,
     cluster_points,
+    Color,
+    Point,
+    cluster_points,
     sample_mesh_points,
 )
+from duck_factory.points_to_paths import PathFinder
+from duck_factory.reachable_points import PathAnalyzer
 from duck_factory.points_to_paths import PathFinder
 from duck_factory.reachable_points import PathAnalyzer
 
@@ -93,16 +106,16 @@ def mesh_to_paths(
     Do the full conversion from a textured mesh to a list of IK-ready paths.
 
     Convert a mesh to a list of paths, each path being a 3d position and quaternion (x, y, z, w)
-        and being of a certain color.
+            and being of a certain color.
 
     Args:
-            mesh: The mesh to convert to paths
-            n_samples: The number of samples to take from the mesh
-            max_dist: The maximum distance between two samples for neighborhood
-            home_point: The point where the robot should start and end its paths, represented by a point and a normal
+                mesh: The mesh to convert to paths
+                n_samples: The number of samples to take from the mesh
+                max_dist: The maximum distance between two samples for neighborhood
+                home_point: The point where the robot should start and end its paths, represented by a point and a normal
 
     Returns:
-            List of paths, each containing a color and a list of PathPosition (point and quaternion)
+                List of paths, each containing a color and a list of PathPosition (point and quaternion)
     """
     mesh = modify_mesh_position(mesh)
 
@@ -114,25 +127,23 @@ def mesh_to_paths(
     if verbose:
         dither_start = time.time()
         print("Starting dithering")
-    # Dither the mesh's texture
-    img = mesh.visual.material.image
-    img = ditherer.apply_dithering(img.convert("RGB"))
-    mesh.visual.material.image = img
+
+    # Get texture from the mesh, handling both PBR and regular materials
+    img = get_texture(mesh)
+
+    # Dither the texture
+    dithered_img = ditherer.apply_dithering(img.convert("RGB"))
+
+    # Update the texture in the mesh
+    if hasattr(mesh.visual.material, "baseColorTexture"):
+        mesh.visual.material.baseColorTexture = dithered_img
+    else:
+        mesh.visual.material.image = dithered_img
+
     if verbose:
         print(f"Dithering took {time.time() - dither_start:.2f} seconds")
         print("Starting mesh sampling")
         start_sampling = time.time()
-    # Rescale the mesh
-    mesh.vertices *= scale_factor
-    home_point = (np.array(home_point[0]) * scale_factor, home_point[1])
-
-    # If the mesh has no color information, try to add some
-    if not hasattr(mesh.visual, "vertex_colors"):
-        if hasattr(mesh.visual.material, "baseColorFactor"):
-            color = mesh.visual.material.baseColorFactor
-        else:
-            color = BASE_COLOR
-        mesh.visual.vertex_colors = np.tile(color, (len(mesh.vertices), 1))
 
     # Sample points from the mesh and cluster them by proximity
     sampled_points = sample_mesh_points(
@@ -185,17 +196,23 @@ def mesh_to_paths(
         print(
             f"Processing cluster of {len(points)} points with color {color} (noise: {is_noise})"
         )
+        print(
+            f"Processing cluster of {len(points)} points with color {color} (noise: {is_noise})"
+        )
         if is_noise:
             # The noise clusters contain points that we don't want to connect
 
+
             # Create a new path for each point
             for point in points:
+                color_paths[color].append([point])
                 color_paths[color].append([point])
         else:
             # Connect the points in the cluster to form paths
             path_finder = PathFinder(points, max_dist)
             paths_positions = path_finder.find_paths()
 
+            print(f"Found {len(paths_positions)} paths for cluster")
             print(f"Found {len(paths_positions)} paths for cluster")
             for path in paths_positions:
                 color_paths[color].append(path)
@@ -208,6 +225,10 @@ def mesh_to_paths(
     # Merge the paths for each color by inserting paths between them
     rpaths = []
     for color, paths in color_paths.items():
+        print(f"Processing {len(paths)} paths of color {color}")
+        if not paths:
+            continue
+
         print(f"Processing {len(paths)} paths of color {color}")
         if not paths:
             continue
@@ -238,7 +259,10 @@ def mesh_to_paths(
         # Merge the paths
         try:
             merged = bounder.merge_all_path(prepped_paths)
+        try:
+            merged = bounder.merge_all_path(prepped_paths)
 
+            merged = [(pos, norm) for pos, norm in merged if norm is not None]
             merged = [(pos, norm) for pos, norm in merged if norm is not None]
 
             if DISPLAY_ORIENTATION:
@@ -284,6 +308,7 @@ def norm_to_quat(normal: Normal) -> Quaternion:
     # the normal points "away" from the point, we want our robot to point towards it
     # normal = (-normal[0], -normal[1], -normal[2])
 
+    # handle edge cases where the normal is parallel to the z-axis
     # handle edge cases where the normal is parallel to the z-axis
     if np.allclose(normal, [0, 0, 0]):
         raise ValueError("Cannot normalize a zero vector (normal is [0, 0, 0])")

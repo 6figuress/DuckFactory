@@ -2,13 +2,7 @@ import json
 import time
 from collections import defaultdict
 
-import json
-import time
-from collections import defaultdict
-
 import numpy as np
-from PIL import Image
-from scipy.spatial.transform import Rotation
 from PIL import Image
 from scipy.spatial.transform import Rotation
 from trimesh import Trimesh, load_mesh
@@ -17,11 +11,7 @@ from trimesh.sample import sample_surface
 
 from duck_factory.dither_class import Dither
 from duck_factory.path_bounder import PathBounder
-from duck_factory.path_bounder import PathBounder
 from duck_factory.point_sampling import (
-    Color,
-    Point,
-    cluster_points,
     Color,
     Point,
     cluster_points,
@@ -29,13 +19,15 @@ from duck_factory.point_sampling import (
 )
 from duck_factory.points_to_paths import PathFinder
 from duck_factory.reachable_points import PathAnalyzer
-from duck_factory.points_to_paths import PathFinder
-from duck_factory.reachable_points import PathAnalyzer
 
 Normal = tuple[float, float, float]
 Quaternion = tuple[float, float, float, float]
 PathPosition = tuple[*Point, *Quaternion]
 Path = tuple[Color, list[PathPosition]]
+
+DISPLAY_ORIENTATION = (
+    False  # Display the orientation of the points of the plot when running main
+)
 
 BASE_COLOR = (255, 255, 0, 255)
 COLORS = [
@@ -77,8 +69,6 @@ DEFAULT_PATH_ANALYZER = PathAnalyzer(
     tube_length=5e1, diameter=2e-2, cone_height=1e-2, step_angle=36, num_vectors=12
 )
 
-DISPLAY_ORIENTATION = True
-
 
 def get_texture(mesh: Trimesh):
     """Get texture from mesh, handling both PBR and regular materials."""
@@ -98,7 +88,7 @@ def mesh_to_paths(
     verbose: bool = False,
     ditherer: Dither = None,
     path_analyzer: PathAnalyzer = None,
-    bbox_scale: float = 2,
+    bbox_scale: float = 1,
     nz_threshold: float = -1,
     scale_factor: float = 1 / 18,
 ) -> list[Path]:
@@ -162,9 +152,14 @@ def mesh_to_paths(
         print(f"Sample surface took {time.time() - start_surface:.2f} seconds")
         print("Starting point processing")
         start_processing = time.time()
+        counter = 0
 
     valid_points = []
     for point in sampled_points:
+        if verbose:
+            counter += 1
+            if counter % 1000 == 0:
+                print(f"Processing point {counter}")
         # Find a valid orientation for the point
         valid, new_norm = path_analyzer.find_valid_orientation(
             point.coordinates, point.normal, mesh_points
@@ -193,27 +188,22 @@ def mesh_to_paths(
     # Compute the paths for each cluster, and store lists of paths by color
     color_paths = defaultdict(list)
     for points, color, is_noise in clusters:
-        print(
-            f"Processing cluster of {len(points)} points with color {color} (noise: {is_noise})"
-        )
-        print(
-            f"Processing cluster of {len(points)} points with color {color} (noise: {is_noise})"
-        )
+        if verbose:
+            print(
+                f"Processing cluster of {len(points)} points with color {color} (noise: {is_noise})"
+            )
         if is_noise:
             # The noise clusters contain points that we don't want to connect
 
-
             # Create a new path for each point
             for point in points:
-                color_paths[color].append([point])
                 color_paths[color].append([point])
         else:
             # Connect the points in the cluster to form paths
             path_finder = PathFinder(points, max_dist)
             paths_positions = path_finder.find_paths()
-
-            print(f"Found {len(paths_positions)} paths for cluster")
-            print(f"Found {len(paths_positions)} paths for cluster")
+            if verbose:
+                print(f"Found {len(paths_positions)} paths for cluster")
             for path in paths_positions:
                 color_paths[color].append(path)
 
@@ -225,11 +215,8 @@ def mesh_to_paths(
     # Merge the paths for each color by inserting paths between them
     rpaths = []
     for color, paths in color_paths.items():
-        print(f"Processing {len(paths)} paths of color {color}")
-        if not paths:
-            continue
-
-        print(f"Processing {len(paths)} paths of color {color}")
+        if verbose:
+            print(f"Processing {len(paths)} paths of color {color}")
         if not paths:
             continue
 
@@ -254,15 +241,12 @@ def mesh_to_paths(
         ]
 
         # Finish the path at the home point
-        prepped_paths = [[home_point]] + prepped_paths + [[home_point]]
+        # prepped_paths = [[home_point]] + prepped_paths + [[home_point]]
 
         # Merge the paths
         try:
             merged = bounder.merge_all_path(prepped_paths)
-        try:
-            merged = bounder.merge_all_path(prepped_paths)
 
-            merged = [(pos, norm) for pos, norm in merged if norm is not None]
             merged = [(pos, norm) for pos, norm in merged if norm is not None]
 
             if DISPLAY_ORIENTATION:
@@ -383,7 +367,7 @@ if __name__ == "__main__":  # pragma: no cover
     dither = Dither(factor=0.1, algorithm="fs", nc=2)
 
     paths = mesh_to_paths(
-        mesh, max_dist=0.0024, n_samples=50_000, verbose=True, ditherer=dither
+        mesh, max_dist=0.0024, n_samples=50_000, verbose=False, ditherer=dither
     )
 
     # for color, path in paths:

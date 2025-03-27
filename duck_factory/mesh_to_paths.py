@@ -137,7 +137,9 @@ def mesh_to_paths(
     # Merge the paths for each color by inserting paths between them
     rpaths = []
     for color, paths in color_paths.items():
-        bounder = PathBounder(mesh, path_analyzer, mesh_points, bbox_scale=2)
+        bounder = PathBounder(
+            mesh, path_analyzer, mesh_points, bbox_scale=2, nz_threshold=-1
+        )
 
         # Convert paths to position-normal format
         prepped_paths = [
@@ -159,17 +161,9 @@ def mesh_to_paths(
 
         merged = [(pos, norm) for pos, norm in merged if norm is not None]
 
-        # Convert from y-up, x-forward, z-right to z-up, x-forward, y-left
-        merged = [
-            (
-                (-pos[0], pos[2], pos[1]),
-                (-norm[0], norm[2], norm[1]),
-            )
-            for pos, norm in merged
-        ]
-
         # Convert normals to quaternions
         converted_path = [(pos, norm_to_quat(norm)) for pos, norm in merged]
+        # converted_path = merged
 
         rpaths.append((color, converted_path))
 
@@ -248,7 +242,6 @@ def norm_to_quat(normal: Normal) -> Quaternion:
 
 if __name__ == "__main__":  # pragma: no cover
     mesh = load_mesh("cube_8mm.obj")
-    # mesh = modify_mesh_position(mesh)
 
     paths = mesh_to_paths(mesh, max_dist=0.0024, n_samples=50_000)
 

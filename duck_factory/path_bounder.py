@@ -370,19 +370,12 @@ class PathBounder:
                 return path
 
         start_point, start_normal = start
-        start_normal = -np.array(
-            start_normal
-        )  # Invert the normal to point towards the start point
-
         start_adjusted_path = adjust_normal_and_get_intersection(
             start_point, start_normal
         )
         # start_adjusted_path = adjust_normal_and_get_intersection(*start)
 
         end_point, end_normal = end
-        end_normal = -np.array(
-            end_normal
-        )  # Invert the normal to point towards the end point
         end_adjusted_path = adjust_normal_and_get_intersection(end_point, end_normal)
         end_adjusted_path.reverse()
 
@@ -418,7 +411,6 @@ class PathBounder:
             end=path2[0],
             restricted_face=restricted_face,
         )
-
         return path1 + intermediate_path + path2
 
     def merge_all_path(

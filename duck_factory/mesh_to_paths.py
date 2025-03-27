@@ -32,6 +32,29 @@ COLORS = [
 ]
 
 
+def modify_mesh_position(mesh):
+    mesh.vertices = np.column_stack(
+        (
+            -mesh.vertices[:, 0],  # -X
+            mesh.vertices[:, 2],  # Z
+            mesh.vertices[:, 1],  # Y
+        )
+    )
+
+    # Transform all vertex normals, if they exist
+    if mesh.vertex_normals is not None:
+        mesh.vertex_normals = np.column_stack(
+            (
+                -mesh.vertex_normals[:, 0],
+                mesh.vertex_normals[:, 2],
+                mesh.vertex_normals[:, 1],
+            )
+        )
+
+    mesh.apply_translation([0, 0, 0.05])
+    return mesh
+
+
 def mesh_to_paths(
     mesh: Trimesh,
     n_samples: int = 50_000,
@@ -53,6 +76,7 @@ def mesh_to_paths(
     Returns:
         List of paths, each containing a color and a list of PathPosition (point and quaternion)
     """
+    mesh = modify_mesh_position(mesh)
     # Dither the mesh's texture
     img = mesh.visual.material.image
     ditherer = Dither(factor=1, algorithm="fs", nc=2)
@@ -113,11 +137,18 @@ def mesh_to_paths(
     # Merge the paths for each color by inserting paths between them
     rpaths = []
     for color, paths in color_paths.items():
-        bounder = PathBounder(mesh, path_analyzer, mesh_points)
+        bounder = PathBounder(mesh, path_analyzer, mesh_points, nz_threshold=-1.0)
 
         # Convert paths to position-normal format
         prepped_paths = [
-            [(point.coordinates, point.normal) for point in path] for path in paths
+            [
+                (
+                    point.coordinates,
+                    (-point.normal[0], -point.normal[1], -point.normal[2]),
+                )
+                for point in path
+            ]
+            for path in paths
         ]
 
         # Finish the path at the home point
@@ -164,7 +195,7 @@ def norm_to_quat(normal: Normal) -> Quaternion:
         ValueError: If the resulting quaternion contains NaNs
     """
     # the normal points "away" from the point, we want our robot to point towards it
-    normal = (-normal[0], -normal[1], -normal[2])
+    # normal = (-normal[0], -normal[1], -normal[2])
 
     if np.allclose(normal, [0, 0, 0]):
         raise ValueError("Cannot normalize a zero vector (normal is [0, 0, 0])")
@@ -217,7 +248,9 @@ def norm_to_quat(normal: Normal) -> Quaternion:
 
 if __name__ == "__main__":  # pragma: no cover
     mesh = load_mesh("cube_8mm.obj")
-    paths = mesh_to_paths(mesh, max_dist=0.0024, n_samples=200_000)
+    # mesh = modify_mesh_position(mesh)
+
+    paths = mesh_to_paths(mesh, max_dist=0.0024, n_samples=50_000)
 
     # for color, path in paths:
     #     print(f"Color: {color}")
@@ -247,16 +280,27 @@ if __name__ == "__main__":  # pragma: no cover
         for color, path in paths
     ]
 
-    with open("paths.json", "w") as f:
-        json.dump(paths, f, indent=4)
+    # with open("paths.json", "w") as f:
+    #     json.dump(paths, f, indent=4)
 
-    print("Paths exported to paths.json")
+    # print("Paths exported to paths.json")
 
     import matplotlib.pyplot as plt
-    from mpl_toolkits.mplot3d import Axes3D
+    from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
     fig = plt.figure()
     ax = fig.add_subplot(111, projection="3d")
+
+    box = mesh.bounding_box_oriented
+
+    obb_vertices = box.vertices
+
+    obb_faces = [[obb_vertices[i] for i in face] for face in box.faces]
+    for i, face in enumerate(obb_faces):
+        color = "lightblue"
+        ax.add_collection3d(
+            Poly3DCollection([face], alpha=0.3, edgecolor="black", facecolors=color)
+        )
 
     for color, path in paths:
         coords = [pos for pos, _ in path]
@@ -266,6 +310,28 @@ if __name__ == "__main__":  # pragma: no cover
             [c[2] for c in coords],
             label=str(color),
         )
+
+        start_point, _ = path[0]
+        end_point, _ = path[-1]
+
+        # To be able to display the normal vectors, we need to disable the conversion to quaternions
+        # length = 0.05
+        # for pos, normal in path:
+        #     # Draw the normal
+        #     end_pos = (
+        #         np.array(pos) - np.array(normal) * length
+        #     )  # Ending at the correct point
+        #     ax.quiver(
+        #         end_pos[0],
+        #         end_pos[1],
+        #         end_pos[2],
+        #         normal[0],
+        #         normal[1],
+        #         normal[2],
+        #         color="magenta",
+        #         length=length,
+        #         normalize=True,
+        #     )
 
     ax.legend()
     ax.set_xlabel("X")

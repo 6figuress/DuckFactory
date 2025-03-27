@@ -96,27 +96,28 @@ class PathBounder:
             tuple[float, float, float]: The normal to the face of the bounding box that is closest to the line segment
         """
         box_transform = self.box.primitive.transform
-
         face_normals = box_transform[:3, :3].T
-
         line_direction = np.array(point2) - np.array(point1)
         line_direction /= np.linalg.norm(line_direction)
-
-        best_normal = None
-        best_dot_product = 1
-
-        for normal in face_normals:
-            dot_product = np.abs(np.dot(normal, line_direction))
-            if dot_product < best_dot_product:
-                best_dot_product = dot_product
-                best_normal = normal
-
         # Ensure the normal points outward from the OBB
         centroid_to_p1 = np.array(point1) - self.box.centroid
-        if np.dot(centroid_to_p1, best_normal) < 0:
-            best_normal = -best_normal
+        # List of (dot_product, normal), sorted by how perpendicular they are
+        sorted_normals = sorted(
+            (
+                (np.abs(np.dot(normal, line_direction)), normal)
+                for normal in face_normals
+            ),
+            key=lambda x: x[0],
+        )
+        for _, normal in sorted_normals:
+            # Ensure normal points outward
+            if np.dot(centroid_to_p1, normal) < 0:
+                normal = -normal
 
-        return -best_normal
+            # TODO replace < 0 wiih a nz_threshold
+            if normal[2] >= 0:
+                return -normal  # preserve your original convention
+        return -sorted_normals[0][1]
 
     def ray_box_intersection(
         self, origin: Position, direction: Orientation
@@ -130,6 +131,9 @@ class PathBounder:
 
         Returns:
             tuple[float, float, float]: The intersection point with the bounding box
+
+        Raises:
+            ValueError: If the direction vector is a zero vector ([0, 0, 0]).
         """
         box_transform = self.box.primitive.transform
         box_center = box_transform[:3, 3]

@@ -1,4 +1,5 @@
 from trimesh import Trimesh, load_mesh
+import trimesh
 import numpy as np
 from collections import deque
 from duck_factory.reachable_points import PathAnalyzer
@@ -22,6 +23,7 @@ class PathBounder:
         nz_threshold: float = 0.0,
         step_size: float = 0.05,
         precision: float = 1e-6,
+        bbox_scale: float = 1.0,
     ):
         """
         Initialize the PathBounder object.
@@ -35,6 +37,10 @@ class PathBounder:
             precision (precision): The precision for rounding the intersection points
         """
         self.box = mesh.bounding_box_oriented
+        scaled_box = self.box.copy()
+        scaled_box.primitive.extents *= bbox_scale
+        self.box = scaled_box
+
         # self.box = mesh.bounding_box
         self.analyzer = analyzer
         self.model_points = model_points

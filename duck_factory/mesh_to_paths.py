@@ -15,6 +15,8 @@ from scipy.spatial.transform import Rotation
 import json
 from collections import defaultdict
 
+import time
+
 Normal = tuple[float, float, float]
 Quaternion = tuple[float, float, float, float]
 PathPosition = tuple[*Point, *Quaternion]
@@ -60,6 +62,7 @@ def mesh_to_paths(
     n_samples: int = 50_000,
     max_dist: float = 0.1,
     home_point: tuple[Point, Normal] = ((0, 0, 0.25), (0, 0, -1)),
+    verbose: bool = False,
 ) -> list[Path]:
     """
     Do the full conversion from a textured mesh to a list of IK-ready paths.
@@ -77,16 +80,29 @@ def mesh_to_paths(
         List of paths, each containing a color and a list of PathPosition (point and quaternion)
     """
     mesh = modify_mesh_position(mesh)
+
+    if verbose:
+        dither_start = time.time()
+        print("Starting dithering")
     # Dither the mesh's texture
     img = mesh.visual.material.image
     ditherer = Dither(factor=1, algorithm="fs", nc=2)
     img = ditherer.apply_dithering(img.convert("RGB"))
     mesh.visual.material.image = img
+    if verbose:
+        print(f"Dithering took {time.time() - dither_start:.2f} seconds")
+        print("Starting mesh sampling")
+        start_sampling = time.time()
 
     # Sample points from the mesh and cluster them by proximity
     sampled_points = sample_mesh_points(
         mesh, base_color=BASE_COLOR, colors=COLORS, n_samples=n_samples
     )
+
+    if verbose:
+        print(f"Sampling took {time.time() - start_sampling:.2f} seconds")
+        print("Starting sample surface")
+        start_surface = time.time()
 
     path_analyzer = PathAnalyzer(
         tube_length=5e1,
@@ -98,6 +114,11 @@ def mesh_to_paths(
 
     # TODO: sample duck + stand
     mesh_points = sample_surface(mesh, n_samples, sample_color=False)[0]
+
+    if verbose:
+        print(f"Sample surface took {time.time() - start_surface:.2f} seconds")
+        print("Starting point processing")
+        start_processing = time.time()
 
     valid_points = []
     for point in sampled_points:
@@ -114,8 +135,17 @@ def mesh_to_paths(
 
         valid_points.append(point)
 
+    if verbose:
+        print(f"Point processing took {time.time() - start_processing:.2f} seconds")
+        print("Starting clustering")
+        start_clustering = time.time()
+
     # Cluster the points by proximity and color
     clusters = cluster_points(valid_points, distance_eps=max_dist)
+    if verbose:
+        print(f"Clustering took {time.time() - start_clustering:.2f} seconds")
+        print("Starting path computation")
+        start_path = time.time()
 
     # Compute the paths for each cluster, and store lists of paths by color
     color_paths = defaultdict(list)
@@ -133,6 +163,11 @@ def mesh_to_paths(
 
             for path in paths_positions:
                 color_paths[color].append(path)
+
+    if verbose:
+        print(f"Path computation took {time.time() - start_path:.2f} seconds")
+        print("Starting path merging")
+        start_merge = time.time()
 
     # Merge the paths for each color by inserting paths between them
     rpaths = []
@@ -166,6 +201,10 @@ def mesh_to_paths(
         # converted_path = merged
 
         rpaths.append((color, converted_path))
+
+    if verbose:
+        print(f"Path merging took {time.time() - start_merge:.2f} seconds")
+        print(f"Finished path computation in {time.time() - dither_start:.2f} seconds")
 
     # TODO: Merge the different colors paths together with pen-switching
 
@@ -243,7 +282,7 @@ def norm_to_quat(normal: Normal) -> Quaternion:
 if __name__ == "__main__":  # pragma: no cover
     mesh = load_mesh("cube_8mm.obj")
 
-    paths = mesh_to_paths(mesh, max_dist=0.0024, n_samples=50_000)
+    paths = mesh_to_paths(mesh, max_dist=0.0024, n_samples=50_000, verbose=True)
 
     # for color, path in paths:
     #     print(f"Color: {color}")

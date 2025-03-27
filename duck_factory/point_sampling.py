@@ -7,6 +7,7 @@ from sklearn.cluster import DBSCAN
 from dataclasses import dataclass
 from typing import List, Tuple
 import pyray as ray
+from math import radians, cos
 
 Color = Tuple[int, int, int]
 Point = Tuple[float, float, float]
@@ -84,20 +85,24 @@ def sample_mesh_points(
 
 def cluster_points(
     points: List[SampledPoint],
-    eps: float = 0.0025 / 2,
+    distance_eps: float = 0.0025 / 2,
     min_samples: int = 10,
+    max_normal_angle: float = 45.0,
 ) -> List[Tuple[List[SampledPoint], Color, bool]]:
     """
-    Clusters points that are close to each other.
+    Clusters points that are close to each other and have similar normal vectors.
 
     Args:
         points: List of points to cluster
-        eps: Maximum distance between two samples for neighborhood
+        distance_eps: Maximum distance between two samples for neighborhood
         min_samples: Minimum number of samples in a neighborhood
+        max_normal_angle: Maximum angle (in degrees) between normals for points to be in the same cluster
 
     Returns:
         List of clusters, each containing a list of points, their color, and a flag indicating if the cluster is noise (i.e. points not in any cluster)
     """
+    LARGE_DISTANCE = 1e6  # DNSCAN can't handle infinity, use 1000km instead
+
     # Group points by color
     color_groups = {}
     for point in points:
@@ -105,15 +110,64 @@ def cluster_points(
             color_groups[point.color] = []
         color_groups[point.color].append(point)
 
+    # Convert max angle to radians and calculate the cosine threshold
+    # (Using cosine comparison is more efficient than calculating angles)
+    cos_threshold = cos(radians(max_normal_angle))
+
+    def custom_metric(a: tuple[*Point, *Normal], b: tuple[*Point, *Normal]) -> float:
+        """
+        Custom distance metric that considers both spatial distance and normal angle.
+
+        Returns:
+            Distance between the two points if they are within the
+            allowed spatial distance and normal angle, otherwise a large value
+        """
+        p1, p2 = a[:3], b[:3]
+        n1, n2 = a[3:6], b[3:6]
+
+        # Calculate spatial distance
+        spatial_dist = np.linalg.norm(p1 - p2)
+
+        # Calculate dot product (cosine of angle between normals, as they are normalized)
+        n1_norm = n1 / np.linalg.norm(n1)
+        n2_norm = n2 / np.linalg.norm(n2)
+        cos_angle = np.dot(n1_norm, n2_norm)
+
+        # If normals are within the allowed angle and spatial distance is within eps
+        if cos_angle >= cos_threshold and spatial_dist <= distance_eps:
+            return spatial_dist
+        else:
+            return LARGE_DISTANCE
+
     clusters_flat = []
     for color, color_points in color_groups.items():
-        # Extract point coordinates
-        point_coords = np.array([p.coordinates for p in color_points])
+        # Extract point coordinates and normals
+        point_data = np.array(
+            [list(p.coordinates) + list(p.normal) for p in color_points]
+        )
 
         # Perform DBSCAN clustering
-        clustering = DBSCAN(eps=eps, min_samples=min_samples, n_jobs=-1).fit(
-            point_coords
+        clustering = DBSCAN(
+            eps=distance_eps,
+            min_samples=min_samples,
+            n_jobs=-1,
+            metric="precomputed",
         )
+
+        # Calculate distance matrix using custom metric
+        n_points = len(point_data)
+        distance_matrix = np.zeros((n_points, n_points))
+        for i in range(n_points):
+            for j in range(i + 1, n_points):
+                dist = custom_metric(point_data[i], point_data[j])
+                distance_matrix[i, j] = dist
+                distance_matrix[j, i] = dist
+
+        # Make sure there are no NaN or infinite values
+        distance_matrix = np.clip(distance_matrix, 0, LARGE_DISTANCE)
+
+        clustering.fit(distance_matrix)
+
         labels = clustering.labels_
 
         # Group points by cluster label

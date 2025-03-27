@@ -80,7 +80,7 @@ def test_cluster_points():
         SampledPoint((0.21, 0.2, 0.2), (0, 255, 0, 255), (0, 0, 1)),
         SampledPoint((1.0, 1.0, 1.0), (0, 0, 255, 255), (0, 0, 1)),  # Noise point
     ]
-    clusters = cluster_points(points, eps=0.02, min_samples=2)
+    clusters = cluster_points(points, distance_eps=0.02, min_samples=2)
 
     assert isinstance(clusters, list)
     assert all(isinstance(cluster, tuple) and len(cluster) == 3 for cluster in clusters)

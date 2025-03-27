@@ -70,6 +70,10 @@ class PathAnalyzer:
         """
         points = np.array(points)
         tip = np.array(p0)
+
+        if np.allclose(normal, [0, 0, 0]):
+            raise ValueError("Cannot normalize a zero vector (normal is [0, 0, 0])")
+
         norm = np.array(normal) / np.linalg.norm(normal)  # Normalize
 
         # Exclude the cone tip explicitly
@@ -172,7 +176,13 @@ class PathAnalyzer:
 
         Returns:
             tuple: A tuple containing a list of points and a list of orientations.
+
+        Raises:
+            ValueError: If the normal or target normal is a zero vector ([0, 0, 0]).
         """
+        if np.allclose(target_normal, [0, 0, 0]) or np.allclose(normal, [0, 0, 0]):
+            raise ValueError("Cannot normalize a zero vector ([0, 0, 0])")
+
         point = point
         points = [point]
         orientations = [normal]

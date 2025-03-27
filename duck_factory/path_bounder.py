@@ -1,4 +1,5 @@
 from trimesh import Trimesh, load_mesh
+import trimesh
 import numpy as np
 from collections import deque
 from duck_factory.reachable_points import PathAnalyzer
@@ -22,6 +23,7 @@ class PathBounder:
         nz_threshold: float = 0.0,
         step_size: float = 0.05,
         precision: float = 1e-6,
+        bbox_scale: float = 1.0,
     ):
         """
         Initialize the PathBounder object.
@@ -35,6 +37,10 @@ class PathBounder:
             precision (precision): The precision for rounding the intersection points
         """
         self.box = mesh.bounding_box_oriented
+        scaled_box = self.box.copy()
+        scaled_box.primitive.extents *= bbox_scale
+        self.box = scaled_box
+
         # self.box = mesh.bounding_box
         self.analyzer = analyzer
         self.model_points = model_points
@@ -128,14 +134,28 @@ class PathBounder:
         box_transform = self.box.primitive.transform
         box_center = box_transform[:3, 3]
         box_axes = box_transform[:3, :3]
-        box_extents = self.box.primitive.extents
+        box_extents = self.box.primitive.extents / 2
+
+        if np.allclose(direction, [0, 0, 0]):
+            raise ValueError("Cannot normalize a zero vector (direction is [0, 0, 0])")
 
         inv_axes = np.linalg.inv(box_axes)
         local_origin = np.dot(inv_axes, np.array(origin) - box_center)
         local_direction = np.dot(inv_axes, direction)
 
-        t_min = (-box_extents - local_origin) / local_direction
-        t_max = (box_extents - local_origin) / local_direction
+        with np.errstate(divide="ignore", invalid="ignore"):
+            epsilon = 1e-8
+
+            t_min = np.where(
+                np.abs(local_direction) > epsilon,
+                (-box_extents - local_origin) / local_direction,
+                -np.inf,
+            )
+            t_max = np.where(
+                np.abs(local_direction) > epsilon,
+                (box_extents - local_origin) / local_direction,
+                np.inf,
+            )
 
         t_near = np.max(np.minimum(t_min, t_max))
         t_far = np.min(np.maximum(t_min, t_max))
@@ -252,30 +272,38 @@ class PathBounder:
         start_idx = np.argmin(cdist([start], vertices))
         end_idx = np.argmin(cdist([end], vertices))
 
-        # BFS to find shortest path
-        queue = deque([(start_idx, [])])
-        visited = set([start_idx])
+        # BFS to find shortest path along edges
+        queue = deque([(start_idx, [start_idx])])
+        visited = set()
 
         while queue:
             current, path = queue.popleft()
+
             if current == end_idx:
-                result_path = [tuple(vertices[i]) for i in path]
+                result_path = [tuple(map(float, vertices[i])) for i in path]
 
-                if len(result_path) < 2:
-                    return []  # No intermediate points found
-
-                # Compute normals for each segment
+                # Compute normals for each point transition
                 path_with_normals = []
+                previous_normal = None
+
                 for i in range(len(result_path) - 1):
-                    normal = tuple(
-                        self.get_normal_to_face(result_path[i], result_path[i + 1])
-                    )
-                    path_with_normals.append((result_path[i], normal))
+                    point1, point2 = result_path[i], result_path[i + 1]
+                    normal = tuple(self.get_normal_to_face(point1, point2))
+
+                    path_with_normals.append((point1, normal))
+                    previous_normal = normal
+
+                # Add the last point with the last computed normal
+                path_with_normals.append((result_path[-1], previous_normal))
+
                 return path_with_normals
+
+            if current in visited:
+                continue
+            visited.add(current)
 
             for neighbor in adjacency[current]:
                 if neighbor not in visited:
-                    visited.add(neighbor)
                     queue.append((neighbor, path + [neighbor]))
 
         return []
@@ -314,6 +342,11 @@ class PathBounder:
             if normal[2] < self.nz_threshold:
                 target_normal = (normal[0], normal[1], self.nz_threshold)
 
+                if np.allclose(target_normal, [0, 0, 0]):
+                    # It's mean that the normal is pointing directly to the z-axis
+                    # So add some offset to the target normal
+                    target_normal = (0.01, 0, self.nz_threshold)
+
                 adjusted_positions, adjusted_normals = (
                     self.analyzer.adjust_and_move_backwards(
                         point=point,
@@ -338,14 +371,17 @@ class PathBounder:
                 adjusted_path.append((final_intersection, target_normal))
                 return adjusted_path
             else:
-                return [(self.get_intersection_with_obb(point, normal), normal)]
+                path = [(point, normal)]
+                path.append((self.get_intersection_with_obb(point, normal), normal))
+                return path
 
-        start_adjusted_path = adjust_normal_and_get_intersection(*start)
+        start_point, start_normal = start
+        start_adjusted_path = adjust_normal_and_get_intersection(
+            start_point, start_normal
+        )
+        # start_adjusted_path = adjust_normal_and_get_intersection(*start)
 
         end_point, end_normal = end
-        end_normal = -np.array(
-            end_normal
-        )  # Invert the normal to point towards the end point
         end_adjusted_path = adjust_normal_and_get_intersection(end_point, end_normal)
         end_adjusted_path.reverse()
 
@@ -360,7 +396,6 @@ class PathBounder:
         final_path = start_adjusted_path
         final_path.extend(path)
         final_path.extend(end_adjusted_path)
-
         return final_path
 
     def merge_path(
@@ -382,7 +417,6 @@ class PathBounder:
             end=path2[0],
             restricted_face=restricted_face,
         )
-
         return path1 + intermediate_path + path2
 
     def merge_all_path(
@@ -413,6 +447,7 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 def plot_path(
     mesh: Trimesh,
+    box,
     path: list[tuple[tuple[float, float, float], tuple[float, float, float]]],
     restricted_face: list[int] = None,
 ) -> None:  # pragma: no cover
@@ -425,9 +460,6 @@ def plot_path(
     """
     fig = plt.figure()
     ax = fig.add_subplot(111, projection="3d")
-
-    # box = mesh.bounding_box
-    box = mesh.bounding_box_oriented
 
     # Plot mesh bounding box
     obb_vertices = box.vertices
@@ -514,19 +546,23 @@ if __name__ == "__main__":  # pragma: no cover
         mesh=mesh,
         analyzer=analyzer,
         model_points=all_points,
+        nz_threshold=-1.0,
     )
 
     # Select two random points from all_points
     random_indices = np.random.choice(len(all_points), 2, replace=False)
-    # start_point = all_points[random_indices[0]]
-    # end_point = all_points[random_indices[1]]
+    start_point = all_points[random_indices[0]]
+    end_point = all_points[random_indices[1]]
+    # start_point = [0.04688027, 0.08760643, -0.00091923]
+    # end_point = [0.03821731, 0.07833333, -0.00019212]
 
-    start_point = [0.0321, 0.0268, 0.04844]
+    # start_point = [0.0321, 0.0268, 0.04844]
     start_normal = (0.3356, 0.0207, 0.9417)
-    end_point = [0.0276, 0.11949, -0.0129]
+    # end_point = [0.0276, 0.11949, -0.0129]
     end_normal = (-0.42780, 0.84981, -0.307881)
 
-    restricted_face = [3, 8]
+    # restricted_face = [3, 8]
+    restricted_face = []
 
     path_with_orientation = path_finder.compute_path_with_orientation(
         start=(start_point, start_normal),
@@ -537,7 +573,9 @@ if __name__ == "__main__":  # pragma: no cover
     print(f"Computed path with {len(path_with_orientation)} points")
     print(path_with_orientation)
 
-    plot_path(mesh, path_with_orientation, restricted_face=restricted_face)
+    plot_path(
+        mesh, path_finder.box, path_with_orientation, restricted_face=restricted_face
+    )
 
     # #  Generate two paths example values
     # path1 = [

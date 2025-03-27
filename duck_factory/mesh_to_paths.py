@@ -167,7 +167,12 @@ def mesh_to_paths(
                 pass
         else:
             # Connect the points in the cluster to form paths
-            path_finder = PathFinder(points, max_dist)
+            path_finder = PathFinder(
+                points=points,
+                max_distance=max_dist,
+                thickness=max_dist,
+                angle_threshold_deg=20,
+            )
             paths_positions = path_finder.find_paths()
 
             for path in paths_positions:
@@ -294,10 +299,13 @@ def norm_to_quat(normal: Normal) -> Quaternion:
     return quat
 
 
+# --------------------------------------------------------------- MAIN ---------------------------------------------------------------
+
+
 if __name__ == "__main__":  # pragma: no cover
     mesh = load_mesh("cube_8mm.obj")
 
-    dither = Dither(factor=0.1, algorithm="fs", nc=2)
+    dither = Dither(factor=0.1, algorithm="SimplePalette", nc=2)
 
     paths = mesh_to_paths(
         mesh, max_dist=0.0024, n_samples=50_000, verbose=True, ditherer=dither
@@ -335,6 +343,8 @@ if __name__ == "__main__":  # pragma: no cover
     #     json.dump(paths, f, indent=4)
 
     # print("Paths exported to paths.json")
+
+    # ------------------------------- DISPLAY -------------------------------
 
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d.art3d import Poly3DCollection

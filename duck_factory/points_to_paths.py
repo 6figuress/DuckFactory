@@ -8,18 +8,95 @@ import trimesh
 from duck_factory.point_sampling import SampledPoint, sample_mesh_points, cluster_points
 
 
+class PointsSimplifier:
+    """Simplifies a list of SampledPoint by removing points that are too close to each other and have similar normals."""
+
+    def __init__(
+        self, thickness: float, angle_threshold_deg: float, verbose: bool = False
+    ):
+        """
+        Initializes the PointsSimplifier with a thickness and an angle threshold.
+
+        Parameters:
+            thickness: Maximum allowed distance between consecutive points
+            angle_threshold_deg: Maximum allowed angle between normals of consecutive points in degrees
+        """
+        self.thickness = thickness
+        self.angle_threshold = np.cos(np.radians(angle_threshold_deg))
+        self.verbose = verbose
+
+    def _normalize(self, v: np.ndarray) -> np.ndarray:
+        """
+        Normalizes a vector.
+
+        Parameters:
+            v: Vector to normalize
+
+        Returns:
+            Normalized vector
+        """
+        length = np.linalg.norm(v)
+        return v / length if length != 0 else np.zeros_like(v)
+
+    def simplify(self, points: list[SampledPoint]) -> list[SampledPoint]:
+        """
+        Simplifies a list of SampledPoint by removing points that are too close to each other and have similar normals.
+
+        Parameters:
+            points: List of SampledPoint to simplify
+
+        Returns:
+            List of simplified SampledPoint
+        """
+        if not points:
+            return []
+
+        if np.isclose(self.thickness, 0.0):
+            return points
+
+        simplified = [points[0]]
+        last = points[0]
+        last_pos = np.array(last.coordinates)
+        last_dir = self._normalize(-np.array(last.normal))
+
+        for point in points[1:]:
+            pos = np.array(point.coordinates)
+
+            if np.linalg.norm(pos - last_pos) >= self.thickness:
+                direction = self._normalize(-np.array(point.normal))
+                alignment = np.dot(last_dir, direction)
+                if alignment >= self.angle_threshold:
+                    simplified.append(point)
+                    last_pos = pos
+                    last_dir = direction
+
+        if self.verbose:
+            print(f"Number of points before simplification: {len(points)}")
+            print(f"Number of points after simplification: {len(simplified)}")
+        return simplified
+
+
 class PathFinder:
     """Class for generating a graph from a point cloud. Finding connected components, and computing paths that ensure consecutive points are within a maximum distance."""
 
-    def __init__(self, points: list[SampledPoint], max_distance: float):
+    def __init__(
+        self,
+        points: list[SampledPoint],
+        max_distance: float,
+        thickness: float = 0.0,
+        angle_threshold_deg: float = 20,
+    ):
         """
         Initializes the PathFinder with a point cloud and a maximum distance.
 
-        Args:
+        Parameters:
             points: List of SampledPoint representing sampled points
             max_distance: Maximum allowed distance between connected points
+            thickness: Size of the simplification thickness
+            angle_threshold_deg: Angle threshold for simplification in degrees
         """
-        self.points = points
+        simplifier = PointsSimplifier(thickness, angle_threshold_deg)
+        self.points = simplifier.simplify(points)
         self.max_distance = max_distance
         self.graph = self._create_graph()
 

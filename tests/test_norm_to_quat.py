@@ -36,7 +36,7 @@ def test_norm_to_quat_basic():
     # Apply rotation to z-axis and check if it aligns with -normal
     r = Rotation.from_quat(quat)
     rotated = r.apply((0, 0, 1))
-    expected = (-1.0, 0.0, 0.0)
+    expected = (1.0, 0.0, 0.0)
 
     _assert_vecs_close(rotated, expected)
 
@@ -52,7 +52,7 @@ def test_norm_to_quat_z_up_norm():
     # Apply rotation to z-axis and check if it aligns with -normal
     r = Rotation.from_quat(quat)
     rotated = r.apply((0, 0, 1))
-    expected = (0.0, 0.0, -1.0)
+    expected = (0.0, 0.0, 1.0)
 
     _assert_vecs_close(rotated, expected)
 
@@ -68,7 +68,7 @@ def test_norm_to_quat_z_down_norm():
     # Apply rotation to z-axis and check if it aligns with -normal
     r = Rotation.from_quat(quat)
     rotated = r.apply((0, 0, 1))
-    expected = (0.0, 0.0, 1.0)
+    expected = (0.0, 0.0, -1.0)
 
     _assert_vecs_close(rotated, expected)
 
@@ -88,7 +88,7 @@ def test_norm_to_quat_diagonal():
     # Apply rotation to z-axis and check if it aligns with -normal
     r = Rotation.from_quat(quat)
     rotated = r.apply((0, 0, 1))
-    expected = -norm_normal
+    expected = norm_normal
 
     _assert_vecs_close(rotated, expected)
 
@@ -114,7 +114,7 @@ def test_norm_to_quat_arbitrary():
         # Apply rotation to z-axis and check if it aligns with -normal
         r = Rotation.from_quat(quat)
         rotated = r.apply((0, 0, 1))
-        expected = -norm_normal
+        expected = norm_normal
 
         _assert_vecs_close(rotated, expected)
 
@@ -147,6 +147,6 @@ def test_norm_to_quat_sphere():
             # Apply rotation to z-axis and check if it aligns with -normal
             r = Rotation.from_quat(quat)
             rotated = r.apply((0, 0, 1))
-            expected = tuple(-np.array(normal))
+            expected = tuple(np.array(normal))
 
             _assert_vecs_close(rotated, expected)

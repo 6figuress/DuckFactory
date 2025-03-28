@@ -53,7 +53,7 @@ def modify_mesh_position(mesh):
             )
         )
 
-    mesh.apply_translation([0, 0, 0.05])
+    # mesh.apply_translation([0, 0, 0.05])
     return mesh
 
 
@@ -63,7 +63,7 @@ DEFAULT_PATH_ANALYZER = PathAnalyzer(
 )
 
 
-DISPLAY_ORIENTATION = True
+DISPLAY_ORIENTATION = False
 
 
 def mesh_to_paths(
@@ -74,7 +74,7 @@ def mesh_to_paths(
     verbose: bool = False,
     ditherer: Dither = None,
     path_analyzer: PathAnalyzer = None,
-    bbox_scale: float = 2,
+    bbox_scale: float = 1.5,
     nz_threshold: float = -1,
 ) -> list[Path]:
     """
@@ -170,7 +170,7 @@ def mesh_to_paths(
             path_finder = PathFinder(
                 points=points,
                 max_distance=max_dist,
-                thickness=max_dist,
+                thickness=max_dist * 5,
                 angle_threshold_deg=20,
             )
             paths_positions = path_finder.find_paths()

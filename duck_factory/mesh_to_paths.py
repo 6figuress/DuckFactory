@@ -33,35 +33,10 @@ COLORS = [
     (255, 255, 255, 255),  # White
 ]
 
-
-def modify_mesh_position(mesh):
-    mesh.vertices = np.column_stack(
-        (
-            -mesh.vertices[:, 0],  # -X
-            mesh.vertices[:, 2],  # Z
-            mesh.vertices[:, 1],  # Y
-        )
-    )
-
-    # Transform all vertex normals, if they exist
-    if mesh.vertex_normals is not None:
-        mesh.vertex_normals = np.column_stack(
-            (
-                -mesh.vertex_normals[:, 0],
-                mesh.vertex_normals[:, 2],
-                mesh.vertex_normals[:, 1],
-            )
-        )
-
-    # mesh.apply_translation([0, 0, 0.05])
-    return mesh
-
-
 DEFAULT_DITHER = Dither(factor=1, algorithm="fs", nc=2)
 DEFAULT_PATH_ANALYZER = PathAnalyzer(
     tube_length=5e1, diameter=2e-2, cone_height=1e-2, step_angle=36, num_vectors=12
 )
-
 
 DISPLAY_ORIENTATION = False
 
@@ -92,8 +67,6 @@ def mesh_to_paths(
     Returns:
         List of paths, each containing a color and a list of PathPosition (point and quaternion)
     """
-    mesh = modify_mesh_position(mesh)
-
     if ditherer is None:
         ditherer = DEFAULT_DITHER
     if path_analyzer is None:
@@ -304,6 +277,24 @@ def norm_to_quat(normal: Normal) -> Quaternion:
 
 if __name__ == "__main__":  # pragma: no cover
     mesh = load_mesh("cube_8mm.obj")
+
+    mesh.vertices = np.column_stack(
+        (
+            -mesh.vertices[:, 0],  # -X
+            mesh.vertices[:, 2],  # Z
+            mesh.vertices[:, 1],  # Y
+        )
+    )
+
+    # Transform all vertex normals, if they exist
+    if mesh.vertex_normals is not None:
+        mesh.vertex_normals = np.column_stack(
+            (
+                -mesh.vertex_normals[:, 0],
+                mesh.vertex_normals[:, 2],
+                mesh.vertex_normals[:, 1],
+            )
+        )
 
     dither = Dither(factor=0.1, algorithm="SimplePalette", nc=2)
 

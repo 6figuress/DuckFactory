@@ -106,8 +106,7 @@ def sample_mesh_points(
 def cluster_points(
     points: List[SampledPoint],
     distance_eps: float = 0.0025 / 2,
-    min_samples: int = 10,
-    max_normal_angle: float = 45.0,
+    min_samples: int = 5,
 ) -> List[Tuple[List[SampledPoint], Color, bool]]:
     """
     Clusters points that are close to each other and have similar normal vectors.
@@ -116,91 +115,89 @@ def cluster_points(
         points: List of points to cluster
         distance_eps: Maximum distance between two samples for neighborhood
         min_samples: Minimum number of samples in a neighborhood
-        max_normal_angle: Maximum angle (in degrees) between normals for points to be in the same cluster
 
     Returns:
         List of clusters, each containing a list of points, their color, and a flag indicating if the cluster is noise (i.e. points not in any cluster)
     """
-    LARGE_DISTANCE = 1e6  # DNSCAN can't handle infinity, use 1000km instead
+    normal_groups = {
+        "top": [],
+        "bottom": [],
+        "left": [],
+        "right": [],
+        "front": [],
+        "back": [],
+    }
 
-    # Group points by color
-    color_groups = {}
+    # Threshold angle to check between the normal and the corresponding axis
+    # A higher cosine value means a smaller angle with the axis
+    # (cosine decreases as angle increases)
+    cos_threshold = cos(radians(65))
+
     for point in points:
-        if point.color not in color_groups:
-            color_groups[point.color] = []
-        color_groups[point.color].append(point)
+        nx, ny, nz = point.normal
+        x, y, z = point.coordinates
 
-    # Convert max angle to radians and calculate the cosine threshold
-    # (Using cosine comparison is more efficient than calculating angles)
-    cos_threshold = cos(radians(max_normal_angle))
+        # Normalize normal vector
+        normal_len = (nx**2 + ny**2 + nz**2) ** 0.5
+        nx, ny, nz = nx / normal_len, ny / normal_len, nz / normal_len
 
-    def custom_metric(a: tuple[*Point, *Normal], b: tuple[*Point, *Normal]) -> float:
-        """
-        Custom distance metric that considers both spatial distance and normal angle.
-
-        Returns:
-            Distance between the two points if they are within the
-            allowed spatial distance and normal angle, otherwise a large value
-        """
-        p1, p2 = a[:3], b[:3]
-        n1, n2 = a[3:6], b[3:6]
-
-        # Calculate spatial distance
-        spatial_dist = np.linalg.norm(p1 - p2)
-
-        # Calculate dot product (cosine of angle between normals, as they are normalized)
-        n1_norm = n1 / np.linalg.norm(n1)
-        n2_norm = n2 / np.linalg.norm(n2)
-        cos_angle = np.dot(n1_norm, n2_norm)
-
-        # If normals are within the allowed angle and spatial distance is within eps
-        if cos_angle >= cos_threshold and spatial_dist <= distance_eps:
-            return spatial_dist
+        if nz > cos_threshold:
+            normal_groups["right"].append(point)
+        elif nz < -cos_threshold:
+            normal_groups["left"].append(point)
+        elif nx > cos_threshold:
+            normal_groups["front"].append(point)
+        elif nx < -cos_threshold:
+            normal_groups["back"].append(point)
+        elif ny > cos_threshold:
+            normal_groups["top"].append(point)
+        elif ny < -cos_threshold:
+            normal_groups["bottom"].append(point)
         else:
-            return LARGE_DISTANCE
+            # Normal doesn't clearly align with any axis,
+            # prioritize left/right sides based on point position
+            normal_groups["right" if z > 0 else "left"].append(point)
 
     clusters_flat = []
-    for color, color_points in color_groups.items():
-        # Extract point coordinates and normals
-        point_data = np.array(
-            [list(p.coordinates) + list(p.normal) for p in color_points]
-        )
+    for _, normal_points in normal_groups.items():
+        # Group points by color within this normal group
+        color_groups = {}
+        for point in normal_points:
+            if point.color not in color_groups:
+                color_groups[point.color] = []
+            color_groups[point.color].append(point)
 
-        # Perform DBSCAN clustering
-        clustering = DBSCAN(
-            eps=distance_eps,
-            min_samples=min_samples,
-            n_jobs=-1,
-            metric="precomputed",
-        )
+        # Process each color group within this normal group
+        for color, color_points in color_groups.items():
+            # Extract point coordinates
+            point_data = np.array([p.coordinates for p in color_points])
 
-        # Calculate distance matrix using custom metric
-        n_points = len(point_data)
-        distance_matrix = np.zeros((n_points, n_points))
-        for i in range(n_points):
-            for j in range(i + 1, n_points):
-                dist = custom_metric(point_data[i], point_data[j])
-                distance_matrix[i, j] = dist
-                distance_matrix[j, i] = dist
+            if len(point_data) < min_samples:
+                # Not enough points for clustering, treat as one cluster
+                if color_points:
+                    clusters_flat.append((color_points, color, False))
+                continue
 
-        # Make sure there are no NaN or infinite values
-        distance_matrix = np.clip(distance_matrix, 0, LARGE_DISTANCE)
+            # Perform DBSCAN clustering
+            clustering = DBSCAN(
+                eps=distance_eps,
+                min_samples=min_samples,
+                n_jobs=-1,
+            ).fit(point_data)
 
-        clustering.fit(distance_matrix)
+            labels = clustering.labels_
 
-        labels = clustering.labels_
+            # Group points by cluster label
+            color_clusters = {}
+            for i, label in enumerate(labels):
+                if label not in color_clusters:
+                    color_clusters[label] = []
+                color_clusters[label].append(color_points[i])
 
-        # Group points by cluster label
-        color_clusters = {}
-        for i, label in enumerate(labels):
-            if label not in color_clusters:
-                color_clusters[label] = []
-            color_clusters[label].append(color_points[i])
-
-        # Flatten clusters
-        for label, cluster_points in color_clusters.items():
-            if cluster_points:
-                clusters_flat.append((cluster_points, color, label == -1))
+            # Flatten clusters
+            for label, cluster_points in color_clusters.items():
+                if cluster_points:
+                    clusters_flat.append((cluster_points, color, label == -1))
 
     return clusters_flat
 

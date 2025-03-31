@@ -37,9 +37,10 @@ class PathBounder:
             precision (precision): The precision for rounding the intersection points
         """
         self.box = mesh.bounding_box_oriented
-        scaled_box = self.box.copy()
-        scaled_box.primitive.extents *= bbox_scale
-        self.box = scaled_box
+        if bbox_scale != 1.0:
+            scaled_box = self.box.copy()
+            scaled_box.primitive.extents *= bbox_scale
+            self.box = scaled_box
 
         # self.box = mesh.bounding_box
         self.analyzer = analyzer
@@ -541,7 +542,8 @@ if __name__ == "__main__":  # pragma: no cover
     analyzer = PathAnalyzer(
         tube_length=5e1, diameter=2e-2, cone_height=1e-2, step_angle=10, num_vectors=24
     )
-    mesh = load_mesh("DuckComplete.obj")
+    # mesh = load_mesh("DuckComplete.obj")
+    mesh = load_mesh("duck_isc.obj")
     sampled_points = sample_surface(mesh, 5_000, sample_color=False)
 
     all_points = sampled_points[0]

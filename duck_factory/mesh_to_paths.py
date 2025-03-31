@@ -47,7 +47,7 @@ def mesh_to_paths(
     verbose: bool = False,
     ditherer: Dither = None,
     path_analyzer: PathAnalyzer = None,
-    bbox_scale: float = 1.5,
+    bbox_scale: float = 1,
     nz_threshold: float = -1,
     thickness: float = 0.01,
 ) -> list[Path]:
@@ -330,6 +330,15 @@ def plot_paths(mesh: Trimesh, paths: list[Path]) -> None:
                 normalize=True,
             )
 
+    num_faces = min(500, len(mesh.faces))
+    random_indices = np.random.choice(len(mesh.faces), num_faces, replace=False)
+    subset_faces = mesh.faces[random_indices]
+    for face in subset_faces:
+        coords = mesh.vertices[face]
+        ax.add_collection3d(
+            Poly3DCollection([coords], color="gray", alpha=0.3, edgecolor="black")
+        )
+
     ax.legend()
     ax.set_xlabel("X")
     ax.set_ylabel("Y")
@@ -343,7 +352,8 @@ def plot_paths(mesh: Trimesh, paths: list[Path]) -> None:
 
 
 if __name__ == "__main__":  # pragma: no cover
-    mesh = load_mesh("cube_8mm.obj")
+    # mesh = load_mesh("cube_8mm.obj")
+    mesh = load_mesh("duck_isc.obj")
 
     mesh.vertices = np.column_stack(
         (

@@ -96,8 +96,15 @@ class PathFinder:
             angle_threshold_deg: Angle threshold for simplification in degrees
             verbose: Display log
         """
-        simplifier = PointsSimplifier(thickness, angle_threshold_deg, verbose=verbose)
-        self.points = simplifier.simplify(points)
+        if thickness <= 0.0:
+            self.points = points
+            if verbose:
+                print("No simplification applied.")
+        else:
+            simplifier = PointsSimplifier(
+                thickness, angle_threshold_deg, verbose=verbose
+            )
+            self.points = simplifier.simplify(points)
         self.max_distance = max_distance
         self.graph = self._create_graph()
 

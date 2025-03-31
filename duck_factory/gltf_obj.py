@@ -7,8 +7,7 @@ import mathutils
 
 # Get the arguments after the "--" delimiter
 argv = sys.argv[sys.argv.index("--") + 1 :]
-output_dir = argv[0]
-input_file = argv[1]
+input_file = argv[0]
 
 # Clear existing objects
 bpy.ops.object.select_all(action="SELECT")
@@ -30,7 +29,7 @@ for obj in bpy.data.objects:
 
 # Get the base filename without extension
 base_name = os.path.splitext(os.path.basename(input_file))[0]
-output_path = os.path.join(output_dir, base_name + ".obj")
+output_path = base_name + ".obj"
 
 # Process and save textures first
 for material in bpy.data.materials:
@@ -40,7 +39,7 @@ for material in bpy.data.materials:
                 # Ensure the image has a proper name and path
                 if not node.image.filepath:
                     image_name = f"{node.image.name}.png"
-                    node.image.filepath = os.path.join(output_dir, image_name)
+                    node.image.filepath = image_name
                 if not node.image.packed_file:
                     node.image.pack()
 
@@ -64,7 +63,7 @@ bpy.ops.wm.obj_export(
 # Save textures
 for image in bpy.data.images:
     if image.packed_file:
-        texture_path = os.path.join(output_dir, f"{image.name}.png")
+        texture_path = f"{image.name}.png"
         image.filepath_raw = texture_path
         image.save_render(texture_path)
         image.unpack(method="WRITE_LOCAL")

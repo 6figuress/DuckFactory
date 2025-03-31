@@ -172,12 +172,6 @@ def cluster_points(
             # Extract point coordinates
             point_data = np.array([p.coordinates for p in color_points])
 
-            if len(point_data) < min_samples:
-                # Not enough points for clustering, treat as one cluster
-                if color_points:
-                    clusters_flat.append((color_points, color, False))
-                continue
-
             # Perform DBSCAN clustering
             clustering = DBSCAN(
                 eps=distance_eps,

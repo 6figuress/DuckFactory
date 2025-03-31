@@ -72,18 +72,38 @@ def test_sample_mesh_points(test_mesh, base_color, sample_colors):
     assert not any(p.color == base_color for p in sampled_points)
 
 
-def test_cluster_points():
+def test_cluster_cube_faces():
     points = [
-        SampledPoint((0.1, 0.1, 0.1), (255, 0, 0, 255), (0, 0, 1)),
-        SampledPoint((0.1, 0.11, 0.1), (255, 0, 0, 255), (0, 0, 1)),
-        SampledPoint((0.2, 0.2, 0.2), (0, 255, 0, 255), (0, 0, 1)),
-        SampledPoint((0.21, 0.2, 0.2), (0, 255, 0, 255), (0, 0, 1)),
-        SampledPoint((1.0, 1.0, 1.0), (0, 0, 255, 255), (0, 0, 1)),  # Noise point
+        # Face 1
+        SampledPoint(coordinates=[1, 0.05, 0.05], normal=[1, 0, 0], color=(0, 0, 0, 0)),
+        SampledPoint(coordinates=[1, 0.12, 0.08], normal=[1, 0, 0], color=(0, 0, 0, 0)),
+        SampledPoint(coordinates=[1, 0.14, 0.13], normal=[1, 0, 0], color=(0, 0, 0, 0)),
+        # Face 2
+        SampledPoint(coordinates=[0.05, 1, 0.05], normal=[0, 1, 0], color=(0, 0, 0, 0)),
+        SampledPoint(coordinates=[0.12, 1, 0.08], normal=[0, 1, 0], color=(0, 0, 0, 0)),
+        SampledPoint(coordinates=[0.14, 1, 0.13], normal=[0, 1, 0], color=(0, 0, 0, 0)),
+        # Face 3
+        SampledPoint(coordinates=[0.05, 0.05, 1], normal=[0, 0, 1], color=(0, 0, 0, 0)),
+        SampledPoint(coordinates=[0.12, 0.08, 1], normal=[0, 0, 1], color=(0, 0, 0, 0)),
+        SampledPoint(coordinates=[0.14, 0.13, 1], normal=[0, 0, 1], color=(0, 0, 0, 0)),
+        # Noise point on face 3
+        SampledPoint(coordinates=[0.9, 0.9, 1], normal=[0, 0, 1], color=(0, 0, 0, 0)),
+        # Noise point on other face
+        SampledPoint(coordinates=[0.9, -1, 0.5], normal=[0, -1, 0], color=(0, 0, 0, 0)),
     ]
-    clusters = cluster_points(points, distance_eps=0.02, min_samples=2)
 
-    assert isinstance(clusters, list)
-    assert all(isinstance(cluster, tuple) and len(cluster) == 3 for cluster in clusters)
+    clusters = cluster_points(points, distance_eps=0.3, min_samples=2)
 
-    # Ensure at least one noise cluster
-    assert any(cluster[2] for cluster in clusters)
+    # Count non-noise clusters
+    valid_clusters = [cluster for cluster in clusters if not cluster[2]]
+    assert len(valid_clusters) == 3, "Expected 3 valid face clusters"
+
+    # Count noise clusters
+    noise_clusters = [cluster for cluster in clusters if cluster[2]]
+    assert len(noise_clusters) == 2, "Expected 2 noise clusters"
+
+    # Check cluster sizes (number of points per face)
+    cluster_sizes = sorted([len(cluster[0]) for cluster in valid_clusters])
+    assert all(size == 3 for size in cluster_sizes), (
+        "Expected clusters with 3 points each"
+    )

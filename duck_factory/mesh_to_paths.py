@@ -38,8 +38,6 @@ DEFAULT_PATH_ANALYZER = PathAnalyzer(
     tube_length=5e1, diameter=2e-2, cone_height=1e-2, step_angle=36, num_vectors=12
 )
 
-DISPLAY_ORIENTATION = False
-
 
 def mesh_to_paths(
     mesh: Trimesh,
@@ -51,6 +49,7 @@ def mesh_to_paths(
     path_analyzer: PathAnalyzer = None,
     bbox_scale: float = 1.5,
     nz_threshold: float = -1,
+    thickness: float = 0.01,
 ) -> list[Path]:
     """
     Do the full conversion from a textured mesh to a list of IK-ready paths.
@@ -58,11 +57,13 @@ def mesh_to_paths(
     Convert a mesh to a list of paths, each path being a 3d position and quaternion (x, y, z, w)
     and being of a certain color.
 
-    Args:
+    Parameters:
         mesh: The mesh to convert to paths
         n_samples: The number of samples to take from the mesh
         max_dist: The maximum distance between two samples for neighborhood
         home_point: The point where the robot should start and end its paths, represented by a point and a normal
+        verbose:
+
 
     Returns:
         List of paths, each containing a color and a list of PathPosition (point and quaternion)
@@ -113,6 +114,8 @@ def mesh_to_paths(
             point.normal = new_norm
         else:
             # Can't find a way to reach this point, skip it
+            if verbose:
+                print(f"Point {point.coordinates} is unreachable")
             continue
 
         valid_points.append(point)
@@ -143,8 +146,9 @@ def mesh_to_paths(
             path_finder = PathFinder(
                 points=points,
                 max_distance=max_dist,
-                thickness=max_dist * 5,
+                thickness=thickness,
                 angle_threshold_deg=20,
+                verbose=verbose,
             )
             paths_positions = path_finder.find_paths()
 
@@ -187,11 +191,7 @@ def mesh_to_paths(
 
         merged = [(pos, norm) for pos, norm in merged if norm is not None]
 
-        if DISPLAY_ORIENTATION:
-            converted_path = merged
-        else:
-            # Convert normals to quaternions
-            converted_path = [(pos, norm_to_quat(norm)) for pos, norm in merged]
+        converted_path = [(pos, norm_to_quat(norm)) for pos, norm in merged]
 
         rpaths.append((color, converted_path))
 
@@ -220,9 +220,6 @@ def norm_to_quat(normal: Normal) -> Quaternion:
     Raises:
         ValueError: If the resulting quaternion contains NaNs
     """
-    # the normal points "away" from the point, we want our robot to point towards it
-    # normal = (-normal[0], -normal[1], -normal[2])
-
     if np.allclose(normal, [0, 0, 0]):
         raise ValueError("Cannot normalize a zero vector (normal is [0, 0, 0])")
 
@@ -272,6 +269,76 @@ def norm_to_quat(normal: Normal) -> Quaternion:
     return quat
 
 
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+
+# ------------------------------- DISPLAY -------------------------------
+
+
+def plot_paths(mesh: Trimesh, paths: list[Path]) -> None:
+    """
+    Plot a 3D mesh along with paths in a 3D space.
+
+    Args:
+        mesh: The 3D mesh to be plotted.
+        paths: A list of paths, where each path contains a color and a list of positions and orientations.
+    """
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection="3d")
+
+    box = mesh.bounding_box_oriented
+
+    obb_vertices = box.vertices
+
+    obb_faces = [[obb_vertices[i] for i in face] for face in box.faces]
+    for i, face in enumerate(obb_faces):
+        color = "lightblue"
+        ax.add_collection3d(
+            Poly3DCollection([face], alpha=0.3, edgecolor="black", facecolors=color)
+        )
+
+    for color, path in paths:
+        coords = [pos for pos, _ in path]
+        ax.plot(
+            [c[0] for c in coords],
+            [c[1] for c in coords],
+            [c[2] for c in coords],
+            label=str(color),
+        )
+
+        start_point, _ = path[0]
+        end_point, _ = path[-1]
+
+        # To be able to display the normal vectors, we need to disable the conversion to quaternions
+        length = 0.05
+        for pos, normal in path:
+            r = Rotation.from_quat(normal)
+            normal = r.apply((0, 0, 1))
+            # Draw the normal
+            end_pos = (
+                np.array(pos) - np.array(normal) * length
+            )  # Ending at the correct point
+            ax.quiver(
+                end_pos[0],
+                end_pos[1],
+                end_pos[2],
+                normal[0],
+                normal[1],
+                normal[2],
+                color="magenta",
+                length=length,
+                normalize=True,
+            )
+
+    ax.legend()
+    ax.set_xlabel("X")
+    ax.set_ylabel("Y")
+    ax.set_zlabel("Z")
+    ax.set_aspect("equal")
+
+    plt.show()
+
+
 # --------------------------------------------------------------- MAIN ---------------------------------------------------------------
 
 
@@ -299,14 +366,13 @@ if __name__ == "__main__":  # pragma: no cover
     dither = Dither(factor=0.1, algorithm="SimplePalette", nc=2)
 
     paths = mesh_to_paths(
-        mesh, max_dist=0.0024, n_samples=50_000, verbose=True, ditherer=dither
+        mesh,
+        max_dist=0.005,
+        n_samples=25_000,
+        verbose=True,
+        ditherer=dither,
+        thickness=0.003,
     )
-
-    # for color, path in paths:
-    #     print(f"Color: {color}")
-    #     for point in path:
-    #         print(f"Point: {point}")
-    #     print()
 
     print(f"Number of paths: {len(paths)}")
     print(f"Number of points: {sum([len(path) for _, path in paths])}")
@@ -330,66 +396,4 @@ if __name__ == "__main__":  # pragma: no cover
         for color, path in paths
     ]
 
-    # with open("paths.json", "w") as f:
-    #     json.dump(paths, f, indent=4)
-
-    # print("Paths exported to paths.json")
-
-    # ------------------------------- DISPLAY -------------------------------
-
-    import matplotlib.pyplot as plt
-    from mpl_toolkits.mplot3d.art3d import Poly3DCollection
-
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection="3d")
-
-    box = mesh.bounding_box_oriented
-
-    obb_vertices = box.vertices
-
-    obb_faces = [[obb_vertices[i] for i in face] for face in box.faces]
-    for i, face in enumerate(obb_faces):
-        color = "lightblue"
-        ax.add_collection3d(
-            Poly3DCollection([face], alpha=0.3, edgecolor="black", facecolors=color)
-        )
-
-    for color, path in paths:
-        coords = [pos for pos, _ in path]
-        ax.plot(
-            [c[0] for c in coords],
-            [c[1] for c in coords],
-            [c[2] for c in coords],
-            label=str(color),
-        )
-
-        start_point, _ = path[0]
-        end_point, _ = path[-1]
-
-        if DISPLAY_ORIENTATION:
-            # To be able to display the normal vectors, we need to disable the conversion to quaternions
-            length = 0.05
-            for pos, normal in path:
-                # Draw the normal
-                end_pos = (
-                    np.array(pos) - np.array(normal) * length
-                )  # Ending at the correct point
-                ax.quiver(
-                    end_pos[0],
-                    end_pos[1],
-                    end_pos[2],
-                    normal[0],
-                    normal[1],
-                    normal[2],
-                    color="magenta",
-                    length=length,
-                    normalize=True,
-                )
-
-    ax.legend()
-    ax.set_xlabel("X")
-    ax.set_ylabel("Y")
-    ax.set_zlabel("Z")
-    ax.set_aspect("equal")
-
-    plt.show()
+    plot_paths(mesh, paths)

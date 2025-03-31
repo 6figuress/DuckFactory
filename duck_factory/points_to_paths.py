@@ -71,8 +71,7 @@ class PointsSimplifier:
                     last_dir = direction
 
         if self.verbose:
-            print(f"Number of points before simplification: {len(points)}")
-            print(f"Number of points after simplification: {len(simplified)}")
+            print(f"Simplication : {len(points)} -> {len(simplified)}")
         return simplified
 
 
@@ -85,6 +84,7 @@ class PathFinder:
         max_distance: float,
         thickness: float = 0.0,
         angle_threshold_deg: float = 20,
+        verbose: bool = False,
     ):
         """
         Initializes the PathFinder with a point cloud and a maximum distance.
@@ -94,8 +94,9 @@ class PathFinder:
             max_distance: Maximum allowed distance between connected points
             thickness: Size of the simplification thickness
             angle_threshold_deg: Angle threshold for simplification in degrees
+            verbose: Display log
         """
-        simplifier = PointsSimplifier(thickness, angle_threshold_deg)
+        simplifier = PointsSimplifier(thickness, angle_threshold_deg, verbose=verbose)
         self.points = simplifier.simplify(points)
         self.max_distance = max_distance
         self.graph = self._create_graph()

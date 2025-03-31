@@ -147,7 +147,7 @@ def mesh_to_paths(
                 points=points,
                 max_distance=max_dist,
                 thickness=thickness,
-                angle_threshold_deg=20,
+                angle_threshold_deg=5,
                 verbose=verbose,
             )
             paths_positions = path_finder.find_paths()

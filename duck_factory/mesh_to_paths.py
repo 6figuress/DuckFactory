@@ -1,21 +1,23 @@
-import numpy as np
-from trimesh import Trimesh, load_mesh
-from trimesh.sample import sample_surface
-from duck_factory.dither_class import Dither
-from duck_factory.reachable_points import PathAnalyzer
-from duck_factory.points_to_paths import PathFinder
-from duck_factory.point_sampling import (
-    sample_mesh_points,
-    cluster_points,
-    Point,
-    Color,
-)
-from duck_factory.path_bounder import PathBounder
-from scipy.spatial.transform import Rotation
 import json
+import subprocess
+import time
 from collections import defaultdict
 
-import time
+import numpy as np
+from scipy.spatial.transform import Rotation
+from trimesh import Trimesh, load_mesh
+from trimesh.sample import sample_surface
+
+from duck_factory.dither_class import Dither
+from duck_factory.path_bounder import PathBounder
+from duck_factory.point_sampling import (
+    Color,
+    Point,
+    cluster_points,
+    sample_mesh_points,
+)
+from duck_factory.points_to_paths import PathFinder
+from duck_factory.reachable_points import PathAnalyzer
 
 Normal = tuple[float, float, float]
 Quaternion = tuple[float, float, float, float]
@@ -35,7 +37,11 @@ COLORS = [
 
 DEFAULT_DITHER = Dither(factor=1, algorithm="fs", nc=2)
 DEFAULT_PATH_ANALYZER = PathAnalyzer(
-    tube_length=5e1, diameter=2e-2, cone_height=1e-2, step_angle=36, num_vectors=12
+    tube_length=5e1,
+    diameter=2e-2,
+    cone_height=1e-2,
+    step_angle=36,
+    num_vectors=12,
 )
 
 
@@ -352,8 +358,14 @@ def plot_paths(mesh: Trimesh, paths: list[Path]) -> None:
 
 
 if __name__ == "__main__":  # pragma: no cover
-    # mesh = load_mesh("cube_8mm.obj")
-    mesh = load_mesh("duck_isc.obj")
+    # convert he GLTF file to an OBJ file
+    mesh_filepath = "spiderman_rubber_ducky.glb"
+    result = subprocess.run(["./duck_factory/gltf_obj.sh", mesh_filepath])
+
+    if result.returncode == 0:
+        mesh = load_mesh(mesh_filepath.replace(".glb", ".obj"))
+    else:
+        raise RuntimeError("Failed to convert GLTF file to OBJ")
 
     mesh.vertices = np.column_stack(
         (
@@ -378,7 +390,7 @@ if __name__ == "__main__":  # pragma: no cover
     paths = mesh_to_paths(
         mesh,
         max_dist=0.005,
-        n_samples=25_000,
+        n_samples=5_000,
         verbose=True,
         ditherer=dither,
         thickness=0.003,

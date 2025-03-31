@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import List, Tuple
 import pyray as ray
 from math import radians, cos
+from PIL import Image
 
 Color = Tuple[int, int, int]
 Point = Tuple[float, float, float]
@@ -35,6 +36,7 @@ def sample_mesh_points(
     base_color: Color,
     colors: List[Color],
     n_samples: int = 500_000,
+    nopaint_mask: Image = None,
 ) -> List[SampledPoint]:
     """
     Samples points from the surface of a mesh and assigns them to the closest color in the palette.
@@ -47,10 +49,28 @@ def sample_mesh_points(
         base_color: The base color of the mesh. Points with this color will be ignored.
         colors: A list of colors in the palette.
         n_samples: The number of points to sample.
+        nopaint_mask: An optional mask image to restrict sampling to certain areas of the mesh. White pixels mark "nopaint" areas.
 
     Returns:
         A list of SampledPoint objects, excluding points with the base color.
     """
+    # If a nopaint mask is provided, replace masked areas with the base color in the texture to avoid sampling them
+    if nopaint_mask is not None:
+        texture = mesh.visual.material.image.convert("RGB")
+        base_color_rgb = np.array(base_color[:3], dtype=np.uint8)
+
+        if nopaint_mask.size != texture.size:
+            nopaint_mask = nopaint_mask.resize(texture.size, Image.BICUBIC)
+
+        mask_bw = nopaint_mask.convert("L")
+        mask_array = np.array(mask_bw)
+        white_mask = mask_array == 255
+
+        texture_array = np.array(texture)
+        texture_array[white_mask] = base_color_rgb
+
+        mesh.visual.material.image = Image.fromarray(texture_array)
+
     # Sample surface points
     sampled_surface_points = sample_surface(mesh, n_samples, sample_color=True)
 
@@ -197,9 +217,12 @@ if __name__ == "__main__":  # pragma: no cover
         (255, 255, 255, 255),  # White
     ]
 
-    mesh = trimesh.load_mesh("DuckComplete.obj")
+    mesh = trimesh.load_mesh("spiderman.obj")
+    mask = Image.open("nopaint_mask.png").convert("L")
 
-    points_by_color = sample_mesh_points(mesh, BASE_COLOR, COLORS)
+    points_by_color = sample_mesh_points(
+        mesh, BASE_COLOR, COLORS, n_samples=10_000, nopaint_mask=mask
+    )
     clusters_flat = cluster_points(points_by_color)
 
     all_points = []

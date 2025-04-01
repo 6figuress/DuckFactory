@@ -2,6 +2,7 @@ import json
 import subprocess
 import time
 from collections import defaultdict
+from PIL import Image
 
 import numpy as np
 from scipy.spatial.transform import Rotation
@@ -19,10 +20,11 @@ from duck_factory.point_sampling import (
 from duck_factory.points_to_paths import PathFinder
 from duck_factory.reachable_points import PathAnalyzer
 
+Group = str
 Normal = tuple[float, float, float]
 Quaternion = tuple[float, float, float, float]
 PathPosition = tuple[*Point, *Quaternion]
-Path = tuple[Color, list[PathPosition]]
+Path = tuple[Group, Color, list[PathPosition]]
 
 BASE_COLOR = (255, 255, 0, 255)
 COLORS = [
@@ -56,6 +58,7 @@ def mesh_to_paths(
     bbox_scale: float = 1,
     nz_threshold: float = -1,
     thickness: float = 0.01,
+    nopaint_mask: Image = None,
 ) -> list[Path]:
     """
     Do the full conversion from a textured mesh to a list of IK-ready paths.
@@ -69,7 +72,6 @@ def mesh_to_paths(
         max_dist: The maximum distance between two samples for neighborhood
         home_point: The point where the robot should start and end its paths, represented by a point and a normal
         verbose:
-
 
     Returns:
         List of paths, each containing a color and a list of PathPosition (point and quaternion)
@@ -93,7 +95,11 @@ def mesh_to_paths(
 
     # Sample points from the mesh and cluster them by proximity
     sampled_points = sample_mesh_points(
-        mesh, base_color=BASE_COLOR, colors=COLORS, n_samples=n_samples
+        mesh,
+        base_color=BASE_COLOR,
+        colors=COLORS,
+        n_samples=n_samples,
+        nopaint_mask=nopaint_mask,
     )
 
     if verbose:
@@ -138,9 +144,9 @@ def mesh_to_paths(
         print("Starting path computation")
         start_path = time.time()
 
-    # Compute the paths for each cluster, and store lists of paths by color
-    color_paths = defaultdict(list)
-    for points, color, is_noise in clusters:
+    # Compute the paths for each cluster, and store lists of paths by orientatin and color
+    grouped_paths = defaultdict(lambda: defaultdict(list))
+    for points, color, is_noise, group in clusters:
         if is_noise:
             # The noise clusters contain points that we don't want to connect
             # Create a new path for each point
@@ -159,7 +165,7 @@ def mesh_to_paths(
             paths_positions = path_finder.find_paths()
 
             for path in paths_positions:
-                color_paths[color].append(path)
+                grouped_paths[group][color].append(path)
 
     if verbose:
         print(f"Path computation took {time.time() - start_path:.2f} seconds")
@@ -168,38 +174,39 @@ def mesh_to_paths(
 
     # Merge the paths for each color by inserting paths between them
     rpaths = []
-    for color, paths in color_paths.items():
-        bounder = PathBounder(
-            mesh,
-            path_analyzer,
-            mesh_points,
-            bbox_scale=bbox_scale,
-            nz_threshold=nz_threshold,
-        )
+    for group, colors in grouped_paths.items():
+        for color, paths in colors.items():
+            bounder = PathBounder(
+                mesh,
+                path_analyzer,
+                mesh_points,
+                bbox_scale=bbox_scale,
+                nz_threshold=nz_threshold,
+            )
 
-        # Convert paths to position-normal format
-        prepped_paths = [
-            [
-                (
-                    point.coordinates,
-                    (-point.normal[0], -point.normal[1], -point.normal[2]),
-                )
-                for point in path
+            # Convert paths to position-normal format
+            prepped_paths = [
+                [
+                    (
+                        point.coordinates,
+                        (-point.normal[0], -point.normal[1], -point.normal[2]),
+                    )
+                    for point in path
+                ]
+                for path in paths
             ]
-            for path in paths
-        ]
 
-        # Finish the path at the home point
-        prepped_paths = [[home_point]] + prepped_paths + [[home_point]]
+            # Finish the path at the home point
+            prepped_paths = [[home_point]] + prepped_paths + [[home_point]]
 
-        # Merge the paths
-        merged = bounder.merge_all_path(prepped_paths)
+            # Merge the paths
+            merged = bounder.merge_all_path(prepped_paths)
 
-        merged = [(pos, norm) for pos, norm in merged if norm is not None]
+            merged = [(pos, norm) for pos, norm in merged if norm is not None]
 
-        converted_path = [(pos, norm_to_quat(norm)) for pos, norm in merged]
+            converted_path = [(pos, norm_to_quat(norm)) for pos, norm in merged]
 
-        rpaths.append((color, converted_path))
+            rpaths.append((group, color, converted_path))
 
     if verbose:
         print(f"Path merging took {time.time() - start_merge:.2f} seconds")
@@ -303,7 +310,7 @@ def plot_paths(mesh: Trimesh, paths: list[Path]) -> None:
             Poly3DCollection([face], alpha=0.3, edgecolor="black", facecolors=color)
         )
 
-    for color, path in paths:
+    for group, color, path in paths:
         coords = [pos for pos, _ in path]
         ax.plot(
             [c[0] for c in coords],
@@ -366,6 +373,7 @@ if __name__ == "__main__":  # pragma: no cover
         mesh = load_mesh(mesh_filepath.replace(".glb", ".obj"))
     else:
         raise RuntimeError("Failed to convert GLTF file to OBJ")
+    nopaint_mask = Image.open("nopaint_mask.png").convert("L")
 
     mesh.vertices = np.column_stack(
         (
@@ -385,29 +393,31 @@ if __name__ == "__main__":  # pragma: no cover
             )
         )
 
-    dither = Dither(factor=0.1, algorithm="SimplePalette", nc=2)
+    dither = Dither(factor=1, algorithm="SimplePalette", nc=2)
 
     paths = mesh_to_paths(
         mesh,
         max_dist=0.005,
-        n_samples=5_000,
+        n_samples=50_000,
         verbose=True,
         ditherer=dither,
         thickness=0.003,
+        nopaint_mask=nopaint_mask,
     )
 
     print(f"Number of paths: {len(paths)}")
-    print(f"Number of points: {sum([len(path) for _, path in paths])}")
+    print(f"Number of points: {sum([len(path) for _, _, path in paths])}")
 
     # convert all numpy arrays and tuples to lists
     paths = [
-        (color, [(list(pos), list(quat)) for pos, quat in path])
-        for color, path in paths
+        (group, color, [(list(pos), list(quat)) for pos, quat in path])
+        for group, color, path in paths
     ]
 
     # filter out positions where either the position or the quaternion is NaN
     paths = [
         (
+            group,
             color,
             [
                 (p, q)
@@ -415,7 +425,7 @@ if __name__ == "__main__":  # pragma: no cover
                 if not np.isnan(p).any() and not np.isnan(q).any()
             ],
         )
-        for color, path in paths
+        for group, color, path in paths
     ]
 
     plot_paths(mesh, paths)

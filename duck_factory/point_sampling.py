@@ -9,6 +9,7 @@ from typing import List, Tuple
 import pyray as ray
 from math import radians, cos
 from PIL import Image
+from duck_factory.dither_class import Dither
 
 Color = Tuple[int, int, int]
 Point = Tuple[float, float, float]
@@ -149,17 +150,17 @@ def cluster_points(
             normal_groups["front"].append(point)
         elif nx < -cos_threshold:
             normal_groups["back"].append(point)
-        elif ny > cos_threshold:
-            normal_groups["top"].append(point)
-        elif ny < -cos_threshold:
-            normal_groups["bottom"].append(point)
+        # elif ny > cos_threshold:
+        #     normal_groups["top"].append(point)
+        # elif ny < -cos_threshold:
+        #     normal_groups["bottom"].append(point)
         else:
             # Normal doesn't clearly align with any axis,
             # prioritize left/right sides based on point position
             normal_groups["right" if z > 0 else "left"].append(point)
 
     clusters_flat = []
-    for _, normal_points in normal_groups.items():
+    for normal_group_name, normal_points in normal_groups.items():
         # Group points by color within this normal group
         color_groups = {}
         for point in normal_points:
@@ -191,7 +192,9 @@ def cluster_points(
             # Flatten clusters
             for label, cluster_points in color_clusters.items():
                 if cluster_points:
-                    clusters_flat.append((cluster_points, color, label == -1))
+                    clusters_flat.append(
+                        (cluster_points, color, label == -1, normal_group_name)
+                    )
 
     return clusters_flat
 
@@ -211,16 +214,33 @@ if __name__ == "__main__":  # pragma: no cover
     mesh = trimesh.load_mesh("spiderman.obj")
     mask = Image.open("nopaint_mask.png").convert("L")
 
+    # Apply dithering to the texture
+    ditherer = Dither(factor=1, algorithm="SimplePalette")
+    img = mesh.visual.material.image
+    img = ditherer.apply_dithering(img.convert("RGB"))
+    mesh.visual.material.image = img
+
     points_by_color = sample_mesh_points(
-        mesh, BASE_COLOR, COLORS, n_samples=10_000, nopaint_mask=mask
+        mesh, BASE_COLOR, COLORS, n_samples=35_000, nopaint_mask=mask
     )
     clusters_flat = cluster_points(points_by_color)
+    normal_colors = {
+        "top": (255, 255, 255),
+        "bottom": (0, 0, 0),
+        "left": (0, 0, 255),
+        "right": (255, 0, 0),
+        "front": (255, 0, 255),
+        "back": (0, 255, 0),
+    }
 
     all_points = []
     all_colors = []
-    for points, color, _ in clusters_flat:
+    all_normals = []
+    all_groups = []
+    for points, color, _, group in clusters_flat:
         all_points.extend(points)
         all_colors.extend([color] * len(points))
+        all_groups.extend([group] * len(points))
 
     tot_points = len(all_points)
 
@@ -252,6 +272,13 @@ if __name__ == "__main__":  # pragma: no cover
             point = all_points[i]
             color = all_colors[i]
             ray.draw_sphere(point.coordinates, pen_width, color)
+
+        if False:
+            for i in range(len(all_points)):
+                point = all_points[i]
+                group = all_groups[i]
+                color = normal_colors[group]
+                ray.draw_sphere(point.coordinates, pen_width, color)
 
         ray.end_mode_3d()
         ray.end_drawing()

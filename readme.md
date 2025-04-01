@@ -55,3 +55,50 @@ uv run pytest
 ```
 
 You can also run tests from VS Code in the "Testing" tab.
+
+# Modules
+## dither_class.py
+This module provides functionality for applying dithering to images, reducing their color palette while preserving visual detail. 
+
+```python
+Dither(factor: float, algorithm: str, nc: int)
+```
+* factor: Scaling factor for the input image (value between 0 and 1).
+* algorithm: Dithering algorithm to use:
+  *   ```"fs"``` for Floyd-Steinberg dithering (more advanced).
+  *   ```"simplePalette"``` for a basic palette-mapping approach.
+```
+apply_dithering(image)
+```
+Applies the selected dithering algorithm to the input image.
+* Input: An image (PIL or compatible format).
+* Output: A new image with the dithering effect applied.
+## path_bounder.py
+```python
+PathBounder(
+  mesh: Trimesh,
+  analyzer: PathAnalyzer = None,
+  model_points: Positions = None,
+  nz_threshold: float = 0.0,
+  step_size: float = 0.05,
+  precision: float = 1e-6,
+  bbox_scale: float = 1.0
+)
+```
+* mesh: A Trimesh object representing the geometry.
+* analyzer: Optional PathAnalyzer for surface normal analysis.
+* model_points: Optional list of 3D model points used in analysis.
+* nz_threshold: Threshold for the Z-component of normals triggering adjustment.
+* step_size: Step resolution for path traversal.
+* precision: Precision for rounding intersection coordinates.
+* bbox_scale: Scale factor applied to the bounding box.
+This class enables generation of orientation-aware, constrained paths between 3D points.
+```
+merge_all_paths(
+    paths: list[Path],
+    restricted_faces: list[int] = None
+) -> list[tuple[tuple[float, float, float], tuple[float, float, float, float]]]
+```
+Merges multiple paths into one continuous path, optionally excluding specific mesh faces.
+
+

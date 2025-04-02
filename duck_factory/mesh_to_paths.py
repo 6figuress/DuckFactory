@@ -288,13 +288,14 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 # ------------------------------- DISPLAY -------------------------------
 
 
-def plot_paths(mesh: Trimesh, paths: list[Path]) -> None:
+def plot_paths(mesh: Trimesh, paths: list[Path], display_orientation=True) -> None:
     """
     Plot a 3D mesh along with paths in a 3D space.
 
     Args:
         mesh: The 3D mesh to be plotted.
         paths: A list of paths, where each path contains a color and a list of positions and orientations.
+        display_orientation: If True, display the orientation of the paths.
     """
     fig = plt.figure()
     ax = fig.add_subplot(111, projection="3d")
@@ -304,44 +305,45 @@ def plot_paths(mesh: Trimesh, paths: list[Path]) -> None:
     obb_vertices = box.vertices
 
     obb_faces = [[obb_vertices[i] for i in face] for face in box.faces]
-    for i, face in enumerate(obb_faces):
-        color = "lightblue"
+    for _, face in enumerate(obb_faces):
         ax.add_collection3d(
-            Poly3DCollection([face], alpha=0.3, edgecolor="black", facecolors=color)
+            Poly3DCollection(
+                [face], alpha=0.1, edgecolor="black", facecolors="lightblue"
+            )
         )
 
     for group, color, path in paths:
+        normalised_color = [c / 255 for c in color]
         coords = [pos for pos, _ in path]
         ax.plot(
             [c[0] for c in coords],
             [c[1] for c in coords],
             [c[2] for c in coords],
             label=str(color),
+            color=normalised_color,
+            linewidth=2,
         )
-
-        start_point, _ = path[0]
-        end_point, _ = path[-1]
-
-        # To be able to display the normal vectors, we need to disable the conversion to quaternions
-        length = 0.05
-        for pos, normal in path:
-            r = Rotation.from_quat(normal)
-            normal = r.apply((0, 0, 1))
-            # Draw the normal
-            end_pos = (
-                np.array(pos) - np.array(normal) * length
-            )  # Ending at the correct point
-            ax.quiver(
-                end_pos[0],
-                end_pos[1],
-                end_pos[2],
-                normal[0],
-                normal[1],
-                normal[2],
-                color="magenta",
-                length=length,
-                normalize=True,
-            )
+        if display_orientation:
+            length = 0.025
+            for pos, normal in path:
+                r = Rotation.from_quat(normal)
+                normal = r.apply((0, 0, 1))
+                # Draw the normal
+                end_pos = (
+                    np.array(pos) - np.array(normal) * length
+                )  # Ending at the correct point
+                ax.quiver(
+                    end_pos[0],
+                    end_pos[1],
+                    end_pos[2],
+                    normal[0],
+                    normal[1],
+                    normal[2],
+                    color=[normalised_color[:3] + [normalised_color[3] * 0.5]],
+                    length=length,
+                    normalize=True,
+                    linewidth=1,
+                )
 
     num_faces = min(500, len(mesh.faces))
     random_indices = np.random.choice(len(mesh.faces), num_faces, replace=False)
@@ -349,7 +351,7 @@ def plot_paths(mesh: Trimesh, paths: list[Path]) -> None:
     for face in subset_faces:
         coords = mesh.vertices[face]
         ax.add_collection3d(
-            Poly3DCollection([coords], color="gray", alpha=0.3, edgecolor="black")
+            Poly3DCollection([coords], color="gray", alpha=0.2, edgecolor="black")
         )
 
     ax.legend()

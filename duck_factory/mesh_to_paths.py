@@ -59,6 +59,7 @@ def mesh_to_paths(
     nz_threshold: float = -1,
     thickness: float = 0.01,
     nopaint_mask: Image = None,
+    restricted_face: list[int] = None,
 ) -> list[Path]:
     """
     Do the full conversion from a textured mesh to a list of IK-ready paths.
@@ -200,7 +201,9 @@ def mesh_to_paths(
             prepped_paths = [[home_point]] + prepped_paths + [[home_point]]
 
             # Merge the paths
-            merged = bounder.merge_all_path(prepped_paths)
+            merged = bounder.merge_all_path(
+                paths=prepped_paths, restricted_face=restricted_face
+            )
 
             merged = [(pos, norm) for pos, norm in merged if norm is not None]
 
@@ -288,7 +291,12 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 # ------------------------------- DISPLAY -------------------------------
 
 
-def plot_paths(mesh: Trimesh, paths: list[Path], display_orientation=True) -> None:
+def plot_paths(
+    mesh: Trimesh,
+    paths: list[Path],
+    display_orientation=True,
+    restricted_face: list[int] = None,
+) -> None:
     """
     Plot a 3D mesh along with paths in a 3D space.
 
@@ -305,11 +313,14 @@ def plot_paths(mesh: Trimesh, paths: list[Path], display_orientation=True) -> No
     obb_vertices = box.vertices
 
     obb_faces = [[obb_vertices[i] for i in face] for face in box.faces]
-    for _, face in enumerate(obb_faces):
+    for i, face in enumerate(obb_faces):
+        color = (
+            "lightblue"
+            if restricted_face is None or i not in restricted_face
+            else "orange"
+        )
         ax.add_collection3d(
-            Poly3DCollection(
-                [face], alpha=0.1, edgecolor="black", facecolors="lightblue"
-            )
+            Poly3DCollection([face], alpha=0.1, edgecolor="black", facecolors=color)
         )
 
     for group, color, path in paths:

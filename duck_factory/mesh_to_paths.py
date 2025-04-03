@@ -60,6 +60,7 @@ def mesh_to_paths(
     thickness: float = 0.01,
     nopaint_mask: Image = None,
     restricted_face: list[int] = None,
+    point_offset: float = 0,
 ) -> list[Path]:
     """
     Do the full conversion from a textured mesh to a list of IK-ready paths.
@@ -101,6 +102,7 @@ def mesh_to_paths(
         colors=COLORS,
         n_samples=n_samples,
         nopaint_mask=nopaint_mask,
+        point_offset=point_offset,
     )
 
     if verbose:

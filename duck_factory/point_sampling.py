@@ -38,6 +38,7 @@ def sample_mesh_points(
     colors: List[Color],
     n_samples: int = 500_000,
     nopaint_mask: Image = None,
+    point_offset: float = 0,
 ) -> List[SampledPoint]:
     """
     Samples points from the surface of a mesh and assigns them to the closest color in the palette.
@@ -51,6 +52,7 @@ def sample_mesh_points(
         colors: A list of colors in the palette.
         n_samples: The number of points to sample.
         nopaint_mask: An optional mask image to restrict sampling to certain areas of the mesh. White pixels mark "nopaint" areas.
+        point_offset: The distance in meters to move the sampled points along their normal vectors. Positive moves the point outward, negative moves it inward.
 
     Returns:
         A list of SampledPoint objects, excluding points with the base color.
@@ -93,6 +95,16 @@ def sample_mesh_points(
         # Create SampledPoint
         point_coords = tuple(all_points[i])
         point_normal = tuple(mesh.face_normals[all_faces[i]])
+
+        # Move point by point_offset along the normal vector
+        nx, ny, nz = point_normal
+        x, y, z = point_coords
+        point_coords = (
+            x + nx * point_offset,
+            y + ny * point_offset,
+            z + nz * point_offset,
+        )
+
         processed_points.append(
             SampledPoint(
                 coordinates=point_coords,
